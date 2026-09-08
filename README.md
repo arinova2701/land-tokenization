@@ -159,4 +159,5 @@ Every restart of the node resets the blockchain. The deploy script re-deploys an
 - **Arinova (Maneesh):** CourtKeyRegistry contract, off-chain backend, chain setup, benchmarking
 - **Niharika:** Jurisdiction policy engine, court hierarchy table
 - **Vijay:** Order binding, nonce/expiry logic, replay protection, unfreeze lifecycle
-##Dr Anthony Seba P: Project Guide
+
+\n## Project Guide\n\nDr Anthony Seba P/'
