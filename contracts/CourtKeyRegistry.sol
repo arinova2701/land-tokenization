@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -10,23 +10,20 @@ contract CourtKeyRegistry {
     using MessageHashUtils for bytes32;
 
     struct JudicialKey {
-        string courtName;      // e.g. "XVI Assistant City Civil Court, Chennai"
-        uint256 validFrom;     // unix timestamp
-        uint256 validUntil;    // unix timestamp
+        string courtName;
+        uint256 validFrom;
+        uint256 validUntil;
         bool active;
     }
 
     address public admin;
 
-    // maps a judge's signing address to their registry entry
     mapping(address => JudicialKey) public registry;
-
-    // maps a token/parcel ID to its frozen status
     mapping(uint256 => bool) public frozen;
+    mapping(uint256 => string) public frozenBy; // stores case number that froze it
 
     event JudgeRegistered(address indexed signer, string courtName);
     event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber);
-    event OrderRejected(uint256 indexed tokenId, address indexed signer, string reason);
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "Not admin");
@@ -36,10 +33,6 @@ contract CourtKeyRegistry {
     constructor() {
         admin = msg.sender;
     }
-
-    // ------------------------------------------------------------
-    // Registry management
-    // ------------------------------------------------------------
 
     function registerJudge(
         address signer,
@@ -53,7 +46,6 @@ contract CourtKeyRegistry {
             validUntil: validUntil,
             active: true
         });
-
         emit JudgeRegistered(signer, courtName);
     }
 
@@ -61,14 +53,10 @@ contract CourtKeyRegistry {
         registry[signer].active = false;
     }
 
-    // ------------------------------------------------------------
-    // Core freeze trigger
-    // ------------------------------------------------------------
-
     function submitFreezeOrder(
         uint256 tokenId,
         string calldata caseNumber,
-        bytes32 orderHash,     // hash of the off-chain order document
+        bytes32 orderHash,
         bytes calldata signature
     ) external {
         address recoveredSigner = orderHash.toEthSignedMessageHash().recover(signature);
@@ -82,6 +70,7 @@ contract CourtKeyRegistry {
         );
 
         frozen[tokenId] = true;
+        frozenBy[tokenId] = caseNumber;
         emit OrderAccepted(tokenId, recoveredSigner, caseNumber);
     }
 }

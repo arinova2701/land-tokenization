@@ -1,0 +1,38 @@
+COURT ORDER DEMO DATA - INDEX
+==============================
+Collected: 4 Sep 2026, for Review 2 (9 Sep) demo dataset.
+
+Both files below are FULLY VERIFIED real court documents (complete text fetched directly
+from official/primary sources, not just search snippets), from 2024-2025 - recent enough
+to plausibly carry digital signatures / CNR numbers under the eCourts system.
+
+1. order_01_kamalesh_2025.txt
+   - Madras HC / Chennai City Civil Court hierarchy (matches your TN court hierarchy story)
+   - 3-tier hierarchy in a single case: trial -> appellate -> HC revision
+   - Injunction was denied at all 3 levels
+   - Use for: jurisdiction hierarchy table (Niharika), demo of a "signed order, but the
+     underlying relief was refused" scenario if useful, or just as a structurally realistic
+     order to design your input struct against
+
+2. order_02_kadapa_2024.txt
+   - Andhra Pradesh HC, NOT Tamil Nadu
+   - Has precise property/survey description - good template for your property identifier field
+   - Because it's outside TN jurisdiction, this is a natural real-world negative test case
+     for the jurisdiction policy engine: a validly signed order from a court your registry
+     doesn't recognize should be rejected on jurisdiction grounds, not signature grounds
+
+WHAT TO DO NEXT
+----------------
+For your CourtKeyRegistry input struct, pull these fields out of both documents:
+  - court name / level (string)
+  - case number (string)
+  - judge name (string, this maps to the registered signer)
+  - order date (used for key-validity window check)
+  - property identifier (from order_02, useful as your schema template)
+
+You do not need to feed the full narrative text into the contract or demo script - just
+these structured fields as your "order payload," with a placeholder hash/signature for
+the demo since you don't have actual judicial digital signatures on these documents.
+
+Two real orders is enough to design against and demo credibly. If time allows later in the
+week, more can be added, but don't block contract-writing on this.

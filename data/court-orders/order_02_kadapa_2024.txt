@@ -1,0 +1,48 @@
+======================================================================
+STRUCTURED FIELDS
+======================================================================
+Case Number: I.A.No.878 of 2022 in O.S.No.908 of 2022 (trial) -> C.M.A.No.06 of 2023 (appeal)
+             -> C.R.P.No.578 of 2024 (HC revision)
+Court hierarchy: III Additional Junior Civil Judge, Kadapa (trial)
+                 -> VI Additional District Judge, Kadapa (appellate)
+                 -> High Court of Andhra Pradesh at Amaravati (revision)
+Judge (HC): Justice B.S. Bhanumathi
+Order Date: 28.03.2024
+Parties: The District Co-operative Marketing Society (DCMS) [petitioner in revision] vs
+         Varam Soujanya [respondent, original plaintiff]
+Subject: Interim injunction under Order XXXIX Rules 1&2 CPC, restraining interference with
+         possession of a specific, fully-described property parcel (D.No.45/102-1,
+         Chemmumiahpet, Kadapa Municipal Corporation, S.No.573-1/B, 0.008 hectares)
+Outcome: Trial court DISMISSED the injunction petition (04.04.2023). Appellate court ALLOWED
+         it, reversing the trial court (05.01.2024). High Court on revision SET ASIDE the
+         appellate order and RESTORED the trial court's dismissal (28.03.2024) - so the final
+         outcome is: injunction NOT granted.
+Verified: Yes - full text fetched directly from livelaw.in PDF (hosted mirror of AP High Court
+          order). Judge name, case number (CRP.No.578 of 2024), and full order text confirmed.
+Source: https://livelaw.in/pdf_upload/crp-578-of-2024-1-540611.pdf
+
+Note: this order includes a precise property description with survey numbers and boundary
+description (East/West/North/South), useful as a template for the input payload schema
+(what a real order's "property identifier" field should contain in your struct).
+
+Note on jurisdiction: this is an Andhra Pradesh case, not Tamil Nadu. Useful as a natural
+NEGATIVE TEST CASE for the jurisdiction policy engine (Niharika's module) - a real, validly
+signed order from a court outside the recognized TN court hierarchy should be rejected by
+the jurisdiction check even if the signature itself is valid. This gives you a genuine
+"correctly signed, wrong jurisdiction" rejection case instead of a fabricated one.
+
+======================================================================
+KEY EXCERPT (for reference - do not use full text as on-chain/demo payload)
+======================================================================
+"This civil revision petition is filed under Article 227 of the Constitution of India
+against the order dated 05.01.2024, allowing the petition in CMA.No.06 of 2023 on the file
+of Court of VI Additional District Judge, Kadapa filed against the Order dated 04.04.2023,
+dismissing the petition in I.A.No.878 of 2022 in O.S.No.908 of 2022 on the file of Court of
+the III Additional Junior Civil Judge, Kadapa filed under Order XXXIX Rules 1 and 2 of CPC
+by the plaintiff seeking interim injunction restraining the defendant and its men/agents
+from interfering with the peaceful possession and enjoyment of the following suit Schedule
+property: Kadapa District, Kadapa Rural Sub-District, Kadapa Municipal Corporation Area,
+Chemmumiahpet area... D.No.45/102-1... S.No.573-1/B to an extent of Ac.0.02 cents 09
+square links or 0.008 hectares..."
+
+Full order available at source URL above.

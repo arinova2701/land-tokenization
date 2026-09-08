@@ -1,0 +1,36 @@
+======================================================================
+STRUCTURED FIELDS
+======================================================================
+Case Number: I.A.No.2 of 2024 in O.S.No.5111 of 2024 (trial) -> C.M.A.No.35 of 2024 (appeal)
+             -> C.R.P.No.443 of 2025 (HC revision)
+Court hierarchy: XVI Assistant City Civil Court, Chennai (trial)
+                 -> XVIII Additional City Civil Court, Chennai (appellate)
+                 -> High Court of Judicature at Madras (revision)
+Judge (HC): A.D. Jagadish Chandira, J.
+Order Date: Reserved 26.02.2025, Delivered 07.03.2025
+Parties: Kamalesh Chandrasekaran (petitioner) vs M.A. Noor Jehan Beevi & Ors. (respondents)
+Subject: Ad-interim injunction sought to restrain alienation of vacant land, Plot Nos. 12 & 13,
+         Subbarayan Salai, Mylapore, Chennai
+Outcome: Injunction application DISMISSED at trial (30.09.2024), appeal DISMISSED (21.12.2024),
+         civil revision petition also effectively closed without relief being granted -
+         concurrent finding against the petitioner at all three levels.
+Verified: Yes - full text fetched directly from https://www.mhc.tn.gov.in/judis (official
+          Madras HC judgment portal), mirrored at desikaanoon.in. Case citation, judge name,
+          and case numbers all confirmed against the primary source.
+Source: https://desikaanoon.in/wp-content/uploads/2025/03/Kamalesh_Chandrasekaran_v__MA_Noor_Jehan_Beevi.pdf
+
+Note: this case is unusually detailed (spans allegations of professional misconduct against
+counsel, a Bar Council referral, and a CBCID inquiry directive). For demo purposes, use only
+the structured fields above - the order/injunction status and the three-tier court hierarchy
+is what's relevant to CourtKeyRegistry. Full narrative is not needed as input to the contract.
+
+======================================================================
+KEY EXCERPT (for reference - do not use full text as on-chain/demo payload)
+======================================================================
+"The present civil revision petition has been filed by the plaintiff in O.S.No.5111 of 2024
+seeking to set aside the order dated 30.9.2024 passed by the XVI Assistant City Civil Court,
+Chennai, declining to grant an order of injunction sought for by the plaintiff and the order
+dated 21.12.2024 passed by the XVIII Additional City Civil Court, Chennai in C.M.A.No.35 of
+2024, which confirmed the order passed by the Trial Court."
+
+Full order available at source URL above.

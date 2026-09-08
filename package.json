@@ -1,0 +1,20 @@
+{
+  "name": "land-tokenization-demo",
+  "version": "1.0.0",
+  "description": "CourtKeyRegistry freeze protocol demo",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "node": "npx hardhat node",
+    "deploy": "npx hardhat run scripts/deploy.js --network localhost",
+    "serve": "npx http-server public -p 3000 -c-1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@openzeppelin/contracts": "^5.1.0",
+    "ethers": "^6.13.1",
+    "hardhat": "^2.22.15"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  }
+}

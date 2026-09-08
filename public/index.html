@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CourtKeyRegistry Freeze Protocol — Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #fff; color: #111; padding: 20px; max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 16px; }
+  .account-bar { font-size: 11px; background: #f5f5f5; padding: 8px 12px; border: 1px solid #ddd; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #111; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; cursor: pointer; font-family: monospace; font-size: 13px; background: #f5f5f5; border: 1px solid #ddd; border-bottom: none; }
+  .tab.active { background: #111; color: #fff; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  label { display: block; font-size: 12px; margin-top: 12px; color: #555; }
+  input, select { display: block; width: 100%; padding: 8px; font-family: monospace; font-size: 13px; border: 1px solid #ccc; margin-top: 4px; }
+  button { margin-top: 16px; padding: 10px 20px; font-family: monospace; font-size: 13px; background: #111; color: #fff; border: none; cursor: pointer; }
+  button:hover { background: #333; }
+  .result { margin-top: 16px; padding: 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; border: 1px solid #ddd; background: #fafafa; }
+  .result.success { border-color: #2a7; background: #efffef; }
+  .result.fail { border-color: #c33; background: #fff0f0; }
+  .steps { margin-top: 12px; font-size: 12px; line-height: 1.8; }
+  .step { padding: 2px 0; }
+  .step.pass { color: #2a7; }
+  .step.fail { color: #c33; }
+  .step.pending { color: #999; }
+  hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+  .status-line { font-size: 11px; color: #999; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>CourtKeyRegistry Freeze Protocol</h1>
+<div class="subtitle">Judicially Authenticated Property Token Freeze — Demo</div>
+
+<div class="account-bar" id="accountBar">Connecting to local chain...</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('registrar')">Registrar</div>
+  <div class="tab" onclick="switchTab('court')">Court</div>
+  <div class="tab" onclick="switchTab('public')">Public</div>
+</div>
+
+<!-- REGISTRAR TAB -->
+<div class="panel active" id="panel-registrar">
+  <label>Judge Wallet Address</label>
+  <input type="text" id="reg-address" placeholder="0x...">
+
+  <label>Court Name</label>
+  <input type="text" id="reg-court" placeholder="e.g. XVI Assistant City Civil Court Chennai">
+
+  <label>Valid From (unix timestamp, 0 = always)</label>
+  <input type="text" id="reg-from" value="0">
+
+  <label>Valid Until (unix timestamp)</label>
+  <input type="text" id="reg-until" value="9999999999">
+
+  <button onclick="registerJudge()">Register Judge</button>
+  <button onclick="revokeJudge()" style="background:#900">Revoke Judge</button>
+
+  <div class="result" id="reg-result" style="display:none"></div>
+</div>
+
+<!-- COURT TAB -->
+<div class="panel" id="panel-court">
+  <label>Submit As</label>
+  <select id="court-signer" onchange="updateSignerDisplay()">
+    <!-- populated dynamically -->
+  </select>
+  <div class="status-line" id="signer-status"></div>
+
+  <label>Property Token ID</label>
+  <input type="text" id="court-tokenid" placeholder="e.g. 1">
+
+  <label>Case Number</label>
+  <input type="text" id="court-case" placeholder="e.g. I.A.No.2 of 2024 in O.S.No.5111 of 2024">
+
+  <button onclick="submitFreeze()">Sign & Submit Freeze Order</button>
+
+  <div class="steps" id="court-steps" style="display:none">
+    <div class="step" id="step-hash">1. Hash order content</div>
+    <div class="step" id="step-sign">2. Sign hash with selected account</div>
+    <div class="step" id="step-submit">3. Submit to contract for on-chain verification</div>
+    <div class="step" id="step-recover">4. Contract recovers signer via ECDSA</div>
+    <div class="step" id="step-registry">5. Check signer against CourtKeyRegistry</div>
+    <div class="step" id="step-validity">6. Check key validity window</div>
+    <div class="step" id="step-result">7. Result</div>
+  </div>
+
+  <div class="result" id="court-result" style="display:none"></div>
+</div>
+
+<!-- PUBLIC TAB -->
+<div class="panel" id="panel-public">
+  <label>Property Token ID</label>
+  <input type="text" id="pub-tokenid" placeholder="e.g. 1">
+
+  <button onclick="checkFrozen()">Check Freeze Status</button>
+
+  <div class="result" id="pub-result" style="display:none"></div>
+</div>
+
+<script>
+const ABI = [
+  "function admin() view returns (address)",
+  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active)",
+  "function frozen(uint256) view returns (bool)",
+  "function frozenBy(uint256) view returns (string)",
+  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil)",
+  "function revokeJudge(address signer)",
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, bytes signature)",
+  "event JudgeRegistered(address indexed signer, string courtName)",
+  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber)"
+];
+
+let provider, contract, signers, config;
+
+async function init() {
+  try {
+    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const network = await provider.getNetwork();
+
+    const resp = await fetch("config.json");
+    config = await resp.json();
+
+    contract = new ethers.Contract(config.contractAddress, ABI, provider);
+
+    // Get first 5 accounts from hardhat node
+    const accounts = await provider.listAccounts();
+    signers = accounts;
+
+    document.getElementById("accountBar").textContent =
+      "Connected to local chain (ID: " + network.chainId + ") | Contract: " + config.contractAddress;
+
+    // Populate court signer dropdown
+    const select = document.getElementById("court-signer");
+    select.innerHTML = "";
+
+    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
+      const addr = accounts[i].address;
+      let label = addr.slice(0, 10) + "..." + addr.slice(-6);
+
+      if (addr.toLowerCase() === config.adminAddress.toLowerCase()) {
+        label += " (Registrar)";
+      } else if (addr.toLowerCase() === config.judgeAddress.toLowerCase()) {
+        label += " (Registered Judge)";
+      } else {
+        label += " (Unauthorized)";
+      }
+
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = label;
+      select.appendChild(opt);
+    }
+
+    // Default to judge account
+    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
+      if (accounts[i].address.toLowerCase() === config.judgeAddress.toLowerCase()) {
+        select.value = i;
+        break;
+      }
+    }
+
+    updateSignerDisplay();
+
+    // Pre-fill registrar tab with judge address
+    document.getElementById("reg-address").value = config.judgeAddress;
+
+  } catch (e) {
+    document.getElementById("accountBar").textContent =
+      "ERROR: Could not connect to local chain at 127.0.0.1:8545. Is hardhat node running?";
+    console.error(e);
+  }
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+  event.target.classList.add("active");
+  document.getElementById("panel-" + name).classList.add("active");
+}
+
+async function updateSignerDisplay() {
+  const idx = document.getElementById("court-signer").value;
+  const addr = signers[idx].address;
+  const statusEl = document.getElementById("signer-status");
+
+  try {
+    const info = await contract.registry(addr);
+    if (info.active) {
+      statusEl.textContent = "Registry status: REGISTERED at " + info.courtName;
+      statusEl.style.color = "#2a7";
+    } else {
+      statusEl.textContent = "Registry status: NOT REGISTERED";
+      statusEl.style.color = "#c33";
+    }
+  } catch (e) {
+    statusEl.textContent = "Registry status: NOT REGISTERED";
+    statusEl.style.color = "#c33";
+  }
+}
+
+async function registerJudge() {
+  const resultEl = document.getElementById("reg-result");
+  resultEl.style.display = "block";
+  resultEl.className = "result";
+
+  try {
+    const addr = document.getElementById("reg-address").value.trim();
+    const court = document.getElementById("reg-court").value.trim();
+    const from = document.getElementById("reg-from").value.trim();
+    const until = document.getElementById("reg-until").value.trim();
+
+    // Connect as admin (account 0)
+    const adminSigner = signers[0];
+    const tx = await contract.connect(adminSigner).registerJudge(addr, court, from, until);
+    const receipt = await tx.wait();
+
+    resultEl.className = "result success";
+    resultEl.textContent = "Judge registered successfully\n\n" +
+      "Address: " + addr + "\n" +
+      "Court: " + court + "\n" +
+      "Tx: " + receipt.hash;
+  } catch (e) {
+    resultEl.className = "result fail";
+    resultEl.textContent = "Registration failed: " + (e.reason || e.message);
+  }
+}
+
+async function revokeJudge() {
+  const resultEl = document.getElementById("reg-result");
+  resultEl.style.display = "block";
+
+  try {
+    const addr = document.getElementById("reg-address").value.trim();
+    const adminSigner = signers[0];
+    const tx = await contract.connect(adminSigner).revokeJudge(addr);
+    await tx.wait();
+
+    resultEl.className = "result success";
+    resultEl.textContent = "Judge revoked: " + addr;
+  } catch (e) {
+    resultEl.className = "result fail";
+    resultEl.textContent = "Revoke failed: " + (e.reason || e.message);
+  }
+}
+
+async function submitFreeze() {
+  const stepsEl = document.getElementById("court-steps");
+  const resultEl = document.getElementById("court-result");
+  stepsEl.style.display = "block";
+  resultEl.style.display = "none";
+
+  // Reset all steps
+  for (let i = 1; i <= 7; i++) {
+    const el = document.getElementById("step-" + ["hash","sign","submit","recover","registry","validity","result"][i-1]);
+    el.className = "step pending";
+  }
+
+  const idx = document.getElementById("court-signer").value;
+  const signer = signers[idx];
+  const tokenId = document.getElementById("court-tokenid").value.trim();
+  const caseNumber = document.getElementById("court-case").value.trim();
+
+  try {
+    // Step 1: hash
+    const orderData = caseNumber + " | token:" + tokenId;
+    const orderHash = ethers.keccak256(ethers.toUtf8Bytes(orderData));
+    setStep("hash", "pass", "1. Order hash: " + orderHash);
+
+    // Step 2: sign
+    const signature = await signer.signMessage(ethers.getBytes(orderHash));
+    setStep("sign", "pass", "2. Signed by: " + signer.address);
+
+    // Step 3: submit
+    setStep("submit", "pass", "3. Submitting to contract...");
+
+    const tx = await contract.connect(signer).submitFreezeOrder(
+      tokenId, caseNumber, orderHash, signature
+    );
+    const receipt = await tx.wait();
+
+    // Steps 4-6 passed (contract didn't revert)
+    setStep("recover", "pass", "4. Contract recovered signer via ECDSA");
+    setStep("registry", "pass", "5. Signer found in CourtKeyRegistry");
+    setStep("validity", "pass", "6. Key is within valid time window");
+    setStep("result", "pass", "7. FREEZE ACCEPTED");
+
+    resultEl.style.display = "block";
+    resultEl.className = "result success";
+    resultEl.textContent = "Token #" + tokenId + " is now FROZEN\n\n" +
+      "Case: " + caseNumber + "\n" +
+      "Authorized by: " + signer.address + "\n" +
+      "Tx: " + receipt.hash;
+
+  } catch (e) {
+    // Figure out which step failed
+    const reason = e.reason || e.message || "Unknown error";
+
+    if (reason.includes("Unregistered or revoked")) {
+      setStep("hash", "pass", "1. Order hashed");
+      setStep("sign", "pass", "2. Signed by: " + signer.address);
+      setStep("submit", "pass", "3. Submitted to contract");
+      setStep("recover", "pass", "4. Contract recovered signer: " + signer.address);
+      setStep("registry", "fail", "5. FAILED: Signer not found in CourtKeyRegistry");
+      setStep("validity", "pending", "6. ----");
+      setStep("result", "fail", "7. FREEZE REJECTED");
+    } else if (reason.includes("expired") || reason.includes("not yet valid")) {
+      setStep("hash", "pass", "1. Order hashed");
+      setStep("sign", "pass", "2. Signed by: " + signer.address);
+      setStep("submit", "pass", "3. Submitted to contract");
+      setStep("recover", "pass", "4. Signer recovered");
+      setStep("registry", "pass", "5. Signer found in registry");
+      setStep("validity", "fail", "6. FAILED: Key expired or not yet valid");
+      setStep("result", "fail", "7. FREEZE REJECTED");
+    } else {
+      setStep("submit", "fail", "3. Transaction failed");
+      setStep("result", "fail", "7. ERROR");
+    }
+
+    resultEl.style.display = "block";
+    resultEl.className = "result fail";
+    resultEl.textContent = "FREEZE REJECTED\n\nReason: " + reason + "\n\nSigner: " + signer.address;
+  }
+}
+
+function setStep(name, status, text) {
+  const el = document.getElementById("step-" + name);
+  el.className = "step " + status;
+  el.textContent = text;
+}
+
+async function checkFrozen() {
+  const resultEl = document.getElementById("pub-result");
+  resultEl.style.display = "block";
+
+  try {
+    const tokenId = document.getElementById("pub-tokenid").value.trim();
+    const isFrozen = await contract.frozen(tokenId);
+    const caseNum = await contract.frozenBy(tokenId);
+
+    if (isFrozen) {
+      resultEl.className = "result fail";
+      resultEl.textContent = "Token #" + tokenId + " is FROZEN\n\nFrozen by court order: " + caseNum;
+    } else {
+      resultEl.className = "result success";
+      resultEl.textContent = "Token #" + tokenId + " is NOT FROZEN\n\nNo active freeze order on this property.";
+    }
+  } catch (e) {
+    resultEl.className = "result fail";
+    resultEl.textContent = "Error: " + e.message;
+  }
+}
+
+// Start
+init();
+</script>
+</body>
+</html>
