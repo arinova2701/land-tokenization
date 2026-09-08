@@ -160,4 +160,6 @@ Every restart of the node resets the blockchain. The deploy script re-deploys an
 - **Niharika:** Jurisdiction policy engine, court hierarchy table
 - **Vijay:** Order binding, nonce/expiry logic, replay protection, unfreeze lifecycle
 
-\n## Project Guide\n\nDr Anthony Seba P/'
+## Project Guide
+
+Dr Anthony Seba P
