@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NyayaChain — Court Officer Portal</title>
+<link rel="icon" href="Logo-icon.png">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-SemiBold.otf') format('opentype'); font-weight: 600; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Heavy.otf') format('opentype'); font-weight: 800; font-style: normal; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; font-size: 21px; background: #F8FAFC; color: #475569; padding-top: 88px; }
+
+h1, h2, h3, h4, h5, h6 { font-family: 'Aileron', system-ui, sans-serif; }
+
+/* ── Nav ── */
+nav {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  height: 64px; max-width: 1200px; width: calc(100% - 48px);
+  background: rgba(11,23,54,0.95); backdrop-filter: blur(10px);
+  display: flex; align-items: center;
+  padding: 0 32px; z-index: 100;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none; flex-shrink: 0;
+}
+.nav-brand img { height: 36px; display: block; }
+.nav-brand-name {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-weight: 700; font-size: 21px; color: #fff;
+  letter-spacing: 3px; text-transform: uppercase;
+}
+.nav-links {
+  display: flex; align-items: center; gap: 32px; margin-left: auto;
+}
+.nav-links a {
+  color: rgba(255,255,255,0.8); text-decoration: none;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 20px; transition: color 0.15s;
+}
+.nav-links a:hover { color: #fff; }
+.nav-links a.nav-active { color: #fff; border-bottom: 2px solid rgba(255,255,255,0.5); padding-bottom: 2px; }
+.nav-status {
+  display: flex; align-items: center; gap: 8px; margin-left: 32px;
+}
+.nav-status-icon { height: 18px; display: block; flex-shrink: 0; }
+.nav-status-icon.disconnected { opacity: 0.4; filter: grayscale(1); }
+.nav-status-text { font-size: 16px; color: #94A3B8; font-family: 'DM Sans', system-ui, sans-serif; }
+
+@keyframes pulse-glow {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(74,222,128,0.7)); }
+  50% { transform: scale(1.2); filter: drop-shadow(0 0 10px rgba(74,222,128,1)); }
+}
+@keyframes text-glow-pulse {
+  0%, 100% { text-shadow: 0 0 8px rgba(74,222,128,0.7), 0 0 16px rgba(74,222,128,0.4); }
+  50% { text-shadow: 0 0 16px rgba(74,222,128,1), 0 0 32px rgba(74,222,128,0.6), 0 0 48px rgba(74,222,128,0.3); }
+}
+.nav-status.connected .nav-status-icon { animation: pulse-glow 1.8s ease-in-out infinite; }
+.nav-status.connected .nav-status-text { color: #4ade80; animation: text-glow-pulse 1.8s ease-in-out infinite; }
+
+/* ── Connection Bar ── */
+.conn-bar {
+  background: #F8FAFC; border-bottom: 1px solid #E2E8F0;
+  color: #94A3B8; font-size: 13px;
+  text-align: center; padding: 4px 32px;
+}
+.conn-bar.error { background: #FEF2F2; border-bottom-color: #FCA5A5; color: #DC2626; }
+
+/* ── Page watermark ── */
+.page-watermark {
+  position: fixed; right: -2%; bottom: -5%; width: 450px;
+  opacity: 0.05; z-index: 0; pointer-events: none; user-select: none;
+}
+
+/* ── Portal Banner ── */
+.portal-banner {
+  background: linear-gradient(135deg, #0B1736 0%, #112044 100%);
+  padding: 20px 40px; position: relative; z-index: 1;
+}
+.banner-title {
+  font-size: 29px; font-weight: 700; color: #fff; margin-bottom: 4px;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.banner-sub { font-size: 21px; color: rgba(255,255,255,0.62); }
+
+/* ── Layout ── */
+.page-content { max-width: 720px; margin: 0 auto; padding: 24px 32px 56px; position: relative; z-index: 1; }
+
+/* ── Card ── */
+.card { background: transparent; padding: 28px 0; margin-bottom: 0; border-bottom: 1px solid #E2E8F0; }
+.card:last-of-type { border-bottom: none; }
+.card-title {
+  font-size: 23px; font-weight: 700; color: #0F172A; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 20px; padding-bottom: 12px;
+  border-bottom: 2px solid #0B1736;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+
+/* ── Form ── */
+.form-group { margin-bottom: 14px; }
+.form-group:last-of-type { margin-bottom: 0; }
+label {
+  display: block; font-size: 18px; font-weight: 600;
+  color: #374151; margin-bottom: 6px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+.label-note { font-size: 14px; font-weight: 400; color: #94A3B8; margin-left: 6px; }
+input, select {
+  display: block; width: 100%; padding: 12px 16px; font-size: 20px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  border: 1px solid #D1D5DB; border-radius: 6px;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  background: #fff; color: #0F172A;
+}
+input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+input[readonly] { background: #F8FAFC; color: #64748B; cursor: default; }
+
+/* ── Signer info ── */
+.signer-status { margin-top: 8px; }
+.status-registered {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 16px; font-weight: 600; color: #16A34A;
+}
+.status-registered::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #16A34A; display: block; }
+.status-unregistered {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 16px; font-weight: 600; color: #DC2626;
+}
+.status-unregistered::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #DC2626; display: block; }
+.signer-info-box {
+  margin-top: 12px; background: #F0FDF4; border: 1px solid #BBF7D0;
+  border-radius: 8px; padding: 14px 16px; display: none;
+}
+.signer-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+.signer-info-row { font-size: 18px; color: #475569; }
+.signer-info-row span { font-weight: 600; color: #0F172A; }
+.property-info-note {
+  margin-top: 6px; font-size: 16px; color: #64748B;
+  border-left: 3px solid #CBD5E1;
+  padding: 6px 10px; border-radius: 0 4px 4px 0; display: none;
+}
+.property-info-note.frozen-note { border-left-color: #FCA5A5; background: #FFF5F5; color: #DC2626; }
+.property-info-note.free-note { border-left-color: #86EFAC; background: #F0FDF4; color: #16A34A; }
+
+/* ── Buttons ── */
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 32px; border-radius: 8px; font-size: 20px; font-weight: 600;
+  font-family: 'Aileron', system-ui, sans-serif; cursor: pointer; transition: all 0.15s;
+}
+.btn-primary { background: #2563EB; color: #fff; border: 2px solid #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+.btn-primary:hover { background: #1D4ED8; border-color: #1D4ED8; }
+.btn-gold { background: transparent; color: #78350F; border: 2px solid #C4956A; }
+.btn-gold:hover { background: #FEF3C7; border-color: #A37550; }
+
+/* ── Steps ── */
+.steps-card { display: none; }
+.step-row {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 11px 0; border-bottom: 1px solid #F1F5F9; transition: all 0.2s;
+}
+.step-row:last-child { border-bottom: none; }
+.step-icon {
+  width: 20px; flex-shrink: 0; display: flex;
+  align-items: center; justify-content: center; margin-top: 3px;
+}
+/* CSS circle indicators — no unicode */
+.step-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+}
+.step-row.pending .step-dot { background: transparent; border: 2px solid #D1D5DB; }
+.step-row.pass   .step-dot { background: #16A34A; border: none; }
+.step-row.fail   .step-dot { background: #DC2626; border: none; }
+.step-body { flex: 1; font-size: 20px; line-height: 1.55; padding-top: 1px; word-break: break-all; }
+.step-row.pending .step-body { color: #94A3B8; }
+.step-row.pass   .step-body { color: #15803D; }
+.step-row.fail   .step-body { color: #DC2626; font-weight: 500; }
+
+/* ── Result ── */
+.result-card { border-radius: 10px; padding: 20px 22px; display: none; margin-top: 4px; }
+.result-card.success { background: #F0FDF4; border: 1px solid #86EFAC; }
+.result-card.fail    { background: #FEF2F2; border: 1px solid #FCA5A5; }
+.result-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.result-dot {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+}
+.result-card.success .result-dot { background: #16A34A; }
+.result-card.fail    .result-dot { background: #DC2626; }
+.result-header-title {
+  font-size: 22px; font-weight: 700;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.result-card.success .result-header-title { color: #15803D; }
+.result-card.fail    .result-header-title { color: #DC2626; }
+.result-body { font-size: 20px; line-height: 1.7; color: #374151; }
+.result-body strong { font-weight: 600; color: #0F172A; }
+.result-body .tx-hash {
+  font-family: monospace; font-size: 14px; color: #64748B; word-break: break-all;
+  margin-top: 8px; background: rgba(0,0,0,0.04); padding: 6px 8px; border-radius: 4px; display: block;
+}
+
+/* ── Footer ── */
+footer {
+  background: #0B1736; color: rgba(255,255,255,0.55);
+  text-align: center; padding: 28px 32px; font-size: 17px;
+}
+.footer-brand { font-family: 'Aileron', system-ui, sans-serif; font-weight: 700; font-size: 23px; color: #fff; margin-bottom: 4px; }
+.footer-sub { font-family: 'DM Sans', system-ui, sans-serif; font-size: 18px; color: #64748B; }
+
+@media (max-width: 640px) {
+  nav { top: 8px; width: calc(100% - 24px); padding: 0 20px; border-radius: 10px; }
+  body { padding-top: 80px; }
+  .page-content { padding: 16px 16px 48px; }
+  .portal-banner { padding: 16px 20px; }
+  .signer-info-grid { grid-template-columns: 1fr; }
+  .btn-row { flex-direction: column; }
+  .btn { width: 100%; justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav>
+  <a href="index.html" class="nav-brand">
+    <img src="Logo-icon.png" alt="NyayaChain icon">
+    <span class="nav-brand-name">NyayaChain</span>
+  </a>
+  <div class="nav-links">
+    <a href="court.html" class="nav-active">Court Portal</a>
+    <a href="registrar.html">Registrar</a>
+  </div>
+  <div class="nav-status" id="navStatus">
+    <img src="connected-icon.png" id="navDot" class="nav-status-icon disconnected" alt="">
+    <span class="nav-status-text" id="navStatusText">Connecting...</span>
+  </div>
+</nav>
+
+<!-- ── Page Watermark ── -->
+<img src="Logo-icon.png" alt="" class="page-watermark" aria-hidden="true">
+
+<!-- ── Connection Bar ── -->
+<div class="conn-bar" id="connBar">Connecting to local chain...</div>
+
+<!-- ── Portal Banner ── -->
+<div class="portal-banner">
+  <div class="banner-title">Court Officer Portal</div>
+  <div class="banner-sub">Submit authenticated freeze and unfreeze orders to the on-chain registry</div>
+</div>
+
+<!-- ── Page Content ── -->
+<div class="page-content">
+
+  <!-- Signer / Account Card -->
+  <div class="card">
+    <div class="card-title">Select Court Officer</div>
+    <div class="form-group">
+      <label for="court-signer">Submit As</label>
+      <select id="court-signer" onchange="updateSignerDisplay()"></select>
+      <div class="signer-status" id="signer-status"></div>
+      <div class="signer-info-box" id="signer-info">
+        <div class="signer-info-grid" id="signer-info-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Form Card -->
+  <div class="card">
+    <div class="card-title">Submit Court Order</div>
+
+    <div class="form-group">
+      <label for="court-tokenid">Property Token</label>
+      <select id="court-tokenid" onchange="updatePropertyDisplay()">
+        <option value="1">Token 1 — Vellore</option>
+        <option value="2">Token 2 — Chennai</option>
+        <option value="3">Token 3 — Kadapa (AP)</option>
+      </select>
+      <div class="property-info-note" id="property-info"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="court-case">Case Number</label>
+      <input type="text" id="court-case" placeholder="e.g. I.A.No.2 of 2024 in O.S.No.5111 of 2024">
+    </div>
+
+    <div class="form-group">
+      <label for="court-expiry">Order Valid For <span class="label-note">(minutes from now)</span></label>
+      <input type="text" id="court-expiry" value="60">
+    </div>
+
+    <div class="form-group">
+      <label for="court-nonce">Nonce <span class="label-note">auto-filled — next expected for selected judge</span></label>
+      <input type="text" id="court-nonce" readonly value="0">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="submitOrder('freeze')">Sign &amp; Submit Freeze</button>
+      <button class="btn btn-gold" onclick="submitOrder('unfreeze')">Sign &amp; Submit Unfreeze</button>
+    </div>
+  </div>
+
+  <!-- Verification Steps Card -->
+  <div class="card steps-card" id="steps-card">
+    <div class="card-title">Verification Progress</div>
+    <div class="step-row pending" id="step-expiry">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">1. Check order expiry</div>
+    </div>
+    <div class="step-row pending" id="step-replay">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">2. Check replay (duplicate order)</div>
+    </div>
+    <div class="step-row pending" id="step-hash">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">3. Hash order content (case + token + expiry + nonce)</div>
+    </div>
+    <div class="step-row pending" id="step-sign">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">4. Sign hash with selected account</div>
+    </div>
+    <div class="step-row pending" id="step-submit">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">5. Submit to contract</div>
+    </div>
+    <div class="step-row pending" id="step-recover">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">6. Recover signer via ECDSA</div>
+    </div>
+    <div class="step-row pending" id="step-registry">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">7. Check CourtKeyRegistry</div>
+    </div>
+    <div class="step-row pending" id="step-validity">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">8. Check key validity window</div>
+    </div>
+    <div class="step-row pending" id="step-jurisdiction">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">9. Check territorial jurisdiction</div>
+    </div>
+    <div class="step-row pending" id="step-nonce">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">10. Check nonce sequence</div>
+    </div>
+    <div class="step-row pending" id="step-result">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">11. Result</div>
+    </div>
+
+    <div class="result-card" id="court-result" style="margin-top:20px;">
+      <div class="result-header">
+        <span id="result-icon"></span>
+        <span class="result-header-title" id="result-title"></span>
+      </div>
+      <div class="result-body" id="result-body"></div>
+    </div>
+  </div>
+
+</div><!-- /page-content -->
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-brand">NyayaChain</div>
+  <div class="footer-sub">Judicially Authenticated Property Freeze Protocol</div>
+</footer>
+
+<script>
+const ABI = [
+  "function admin() view returns (address)",
+  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode)",
+  "function judgeNonce(address) view returns (uint256)",
+  "function frozen(uint256) view returns (bool)",
+  "function frozenBy(uint256) view returns (string)",
+  "function usedOrders(bytes32) view returns (bool)",
+  "function propertyTerritory(uint256) view returns (bytes32)",
+  "function parentTerritory(bytes32) view returns (bytes32)",
+  "function territoryName(bytes32) view returns (string)",
+  "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
+  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce)",
+  "function setTerritory(bytes32 code, string name, bytes32 parent)",
+  "function registerProperty(uint256 tokenId, bytes32 territory)",
+  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory)",
+  "function revokeJudge(address signer)",
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
+  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, string territory)",
+  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
+  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory)"
+];
+
+const COURT_LEVELS = { 1: "District Munsif", 2: "Sub Court", 3: "District Court", 4: "High Court" };
+const TERRITORY_KEYS = {
+  vellore: null, chennai: null, tamil_nadu: null, kadapa: null, andhra_pradesh: null
+};
+
+let provider, contract, signers, config;
+
+async function init() {
+  const connBar = document.getElementById("connBar");
+  try {
+    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const network = await provider.getNetwork();
+    const resp = await fetch("config.json");
+    config = await resp.json();
+    contract = new ethers.Contract(config.contractAddress, ABI, provider);
+    const accounts = await provider.listAccounts();
+    signers = accounts;
+
+    for (const key of Object.keys(TERRITORY_KEYS)) {
+      TERRITORY_KEYS[key] = ethers.keccak256(ethers.toUtf8Bytes(key));
+    }
+
+    const short = config.contractAddress.slice(0, 10) + "..." + config.contractAddress.slice(-6);
+    connBar.textContent = "Connected — Chain ID: " + network.chainId + " | Contract: " + short;
+    document.getElementById("navDot").classList.remove("disconnected");
+    document.getElementById("navStatusText").textContent = "Connected";
+    document.getElementById("navStatus").classList.add("connected");
+
+    const select = document.getElementById("court-signer");
+    select.innerHTML = "";
+    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
+      const addr = accounts[i].address;
+      let label = addr.slice(0, 10) + "..." + addr.slice(-6);
+      if (addr.toLowerCase() === config.adminAddress.toLowerCase())        label += " (Registrar)";
+      else if (addr.toLowerCase() === config.judgeAddress.toLowerCase())   label += " (Judge — Vellore)";
+      else if (addr.toLowerCase() === config.outsideJudgeAddress.toLowerCase()) label += " (Judge — Kadapa, AP)";
+      else label += " (Unauthorized)";
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = label;
+      select.appendChild(opt);
+    }
+    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
+      if (accounts[i].address.toLowerCase() === config.judgeAddress.toLowerCase()) {
+        select.value = i;
+        break;
+      }
+    }
+    updateSignerDisplay();
+    updatePropertyDisplay();
+  } catch (e) {
+    connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
+    connBar.className = "conn-bar error";
+    document.getElementById("navStatusText").textContent = "Not connected";
+    console.error(e);
+  }
+}
+
+async function updateSignerDisplay() {
+  const idx = document.getElementById("court-signer").value;
+  const addr = signers[idx].address;
+  const statusEl = document.getElementById("signer-status");
+  const infoEl   = document.getElementById("signer-info");
+  const infoGrid = document.getElementById("signer-info-grid");
+  const nonceEl  = document.getElementById("court-nonce");
+  try {
+    const info = await contract.registry(addr);
+    const currentNonce = await contract.judgeNonce(addr);
+    nonceEl.value = currentNonce.toString();
+    if (info.active) {
+      const terrName = await contract.territoryName(info.territoryCode);
+      statusEl.innerHTML = '<span class="status-registered">Registry status: REGISTERED</span>';
+      infoEl.style.display = "block";
+      infoGrid.innerHTML =
+        '<div class="signer-info-row">Court &nbsp;<span>' + info.courtName + '</span></div>' +
+        '<div class="signer-info-row">Level &nbsp;<span>' + COURT_LEVELS[info.courtLevel] + '</span></div>' +
+        '<div class="signer-info-row">Territory &nbsp;<span>' + terrName + '</span></div>' +
+        '<div class="signer-info-row">Current Nonce &nbsp;<span>' + currentNonce.toString() + '</span></div>';
+    } else {
+      statusEl.innerHTML = '<span class="status-unregistered">Registry status: NOT REGISTERED</span>';
+      infoEl.style.display = "none";
+    }
+  } catch (e) {
+    statusEl.innerHTML = '<span class="status-unregistered">Registry status: NOT REGISTERED</span>';
+    infoEl.style.display = "none";
+    nonceEl.value = "0";
+  }
+}
+
+async function updatePropertyDisplay() {
+  const tokenId = document.getElementById("court-tokenid").value;
+  const infoEl  = document.getElementById("property-info");
+  try {
+    const terrCode = await contract.propertyTerritory(tokenId);
+    const terrName = await contract.territoryName(terrCode);
+    const isFrozen = await contract.frozen(tokenId);
+    infoEl.style.display = "block";
+    if (isFrozen) {
+      infoEl.className = "property-info-note frozen-note";
+      infoEl.textContent = "Territory: " + terrName + " \u00b7 Status: FROZEN";
+    } else {
+      infoEl.className = "property-info-note free-note";
+      infoEl.textContent = "Territory: " + terrName + " \u00b7 Status: not frozen";
+    }
+  } catch (e) {
+    infoEl.style.display = "none";
+  }
+}
+
+async function submitOrder(action) {
+  const stepsCard = document.getElementById("steps-card");
+  const resultEl  = document.getElementById("court-result");
+  stepsCard.style.display = "block";
+  resultEl.style.display = "none";
+
+  const stepNames = ["expiry","replay","hash","sign","submit","recover","registry","validity","jurisdiction","nonce","result"];
+  stepNames.forEach(s => {
+    const el = document.getElementById("step-" + s);
+    el.className = "step-row pending";
+    el.innerHTML = '<div class="step-icon"><span class="step-dot"></span></div><div class="step-body">' + el.querySelector('.step-body').textContent + '</div>';
+  });
+
+  const idx          = document.getElementById("court-signer").value;
+  const signer       = signers[idx];
+  const tokenId      = document.getElementById("court-tokenid").value;
+  const caseNumber   = document.getElementById("court-case").value.trim();
+  const expiryMinutes = parseInt(document.getElementById("court-expiry").value.trim()) || 60;
+  const nonce        = BigInt(document.getElementById("court-nonce").value.trim() || "0");
+  const actionLabel  = action === "freeze" ? "FREEZE" : "UNFREEZE";
+
+  const block = await provider.getBlock("latest");
+  const orderExpiry = block.timestamp + (expiryMinutes * 60);
+
+  try {
+    setStep("expiry", "pass", "1. Order expiry: " + new Date(Number(orderExpiry) * 1000).toLocaleString());
+    setStep("replay", "pass", "2. Replay check queued for on-chain verification");
+
+    const orderData = ethers.solidityPacked(
+      ["string", "uint256", "uint256", "string", "uint256"],
+      [caseNumber, tokenId, orderExpiry, action, nonce]
+    );
+    const orderHash = ethers.keccak256(orderData);
+    setStep("hash", "pass", "3. Hash (token #" + tokenId + " nonce=" + nonce + "): " + orderHash.slice(0, 18) + "...");
+
+    const signature = await signer.signMessage(ethers.getBytes(orderHash));
+    setStep("sign", "pass", "4. Signed by: " + signer.address.slice(0, 12) + "...");
+    setStep("submit", "pass", "5. Submitting " + actionLabel + " order (nonce=" + nonce + ") to contract...");
+
+    let tx;
+    if (action === "freeze") {
+      tx = await contract.connect(signer).submitFreezeOrder(
+        tokenId, caseNumber, orderHash, orderExpiry, nonce, signature
+      );
+    } else {
+      tx = await contract.connect(signer).submitUnfreezeOrder(
+        tokenId, caseNumber, orderHash, orderExpiry, nonce, signature
+      );
+    }
+    const receipt = await tx.wait();
+
+    setStep("recover",      "pass", "6. Signer recovered via ECDSA");
+    setStep("registry",     "pass", "7. Signer found in CourtKeyRegistry");
+    setStep("validity",     "pass", "8. Key within valid time window");
+    setStep("jurisdiction", "pass", "9. Court has territorial jurisdiction over property");
+    setStep("nonce",        "pass", "10. Nonce " + nonce + " accepted — next nonce: " + (nonce + 1n));
+    setStep("result",       "pass", "11. " + actionLabel + " ACCEPTED");
+
+    showResult("success",
+      actionLabel + " ACCEPTED",
+      "<strong>Token #" + tokenId + "</strong> is now " + (action === "freeze" ? "FROZEN" : "UNFROZEN") + "<br>" +
+      "<strong>Case:</strong> " + caseNumber + "<br>" +
+      "<strong>Authorized by:</strong> " + signer.address + "<br>" +
+      "<strong>Nonce used:</strong> " + nonce + "<br>" +
+      "<strong>Order expires:</strong> " + new Date(Number(orderExpiry) * 1000).toLocaleString() +
+      '<span class="tx-hash">Tx: ' + receipt.hash + '</span>'
+    );
+
+    await updateSignerDisplay();
+    updatePropertyDisplay();
+
+  } catch (e) {
+    const reason = e.reason || e.message || "Unknown error";
+
+    if (reason.includes("already submitted")) {
+      setStep("expiry",  "pass", "1. Order not expired");
+      setStep("replay",  "fail", "2. FAILED: Order already submitted (replay blocked)");
+      ["hash","sign","submit","recover","registry","validity","jurisdiction","nonce"].forEach(s => setStep(s, "pending", ""));
+      setStep("result",  "fail", "11. " + actionLabel + " REJECTED — duplicate submission");
+    } else if (reason.includes("Order has expired")) {
+      setStep("expiry",  "fail", "1. FAILED: Order has expired");
+      ["replay","hash","sign","submit","recover","registry","validity","jurisdiction","nonce"].forEach(s => setStep(s, "pending", ""));
+      setStep("result",  "fail", "11. " + actionLabel + " REJECTED — expired order");
+    } else if (reason.includes("Unregistered or revoked")) {
+      setStep("expiry",      "pass", "1. Order not expired");
+      setStep("replay",      "pass", "2. Not a duplicate");
+      setStep("hash",        "pass", "3. Order hashed");
+      setStep("sign",        "pass", "4. Signed by: " + signer.address.slice(0, 12) + "...");
+      setStep("submit",      "pass", "5. Submitted");
+      setStep("recover",     "pass", "6. Signer recovered: " + signer.address.slice(0, 12) + "...");
+      setStep("registry",    "fail", "7. FAILED: Signer not in CourtKeyRegistry");
+      setStep("validity",    "pending", "8. —");
+      setStep("jurisdiction","pending", "9. —");
+      setStep("nonce",       "pending", "10. —");
+      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — unauthorized signer");
+    } else if (reason.includes("Judicial key expired") || reason.includes("not yet valid")) {
+      setStep("expiry",      "pass", "1. Order not expired");
+      setStep("replay",      "pass", "2. Not a duplicate");
+      setStep("hash",        "pass", "3. Order hashed");
+      setStep("sign",        "pass", "4. Signed");
+      setStep("submit",      "pass", "5. Submitted");
+      setStep("recover",     "pass", "6. Signer recovered");
+      setStep("registry",    "pass", "7. Signer in registry");
+      setStep("validity",    "fail", "8. FAILED: Judicial key expired or not yet valid");
+      setStep("jurisdiction","pending", "9. —");
+      setStep("nonce",       "pending", "10. —");
+      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — key validity");
+    } else if (reason.includes("jurisdiction")) {
+      setStep("expiry",      "pass", "1. Order not expired");
+      setStep("replay",      "pass", "2. Not a duplicate");
+      setStep("hash",        "pass", "3. Order hashed");
+      setStep("sign",        "pass", "4. Signed");
+      setStep("submit",      "pass", "5. Submitted");
+      setStep("recover",     "pass", "6. Signer recovered");
+      setStep("registry",    "pass", "7. Signer in registry");
+      setStep("validity",    "pass", "8. Key valid");
+      setStep("jurisdiction","fail", "9. FAILED: Court lacks territorial jurisdiction");
+      setStep("nonce",       "pending", "10. —");
+      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — wrong jurisdiction");
+    } else if (reason.includes("Invalid nonce")) {
+      setStep("expiry",      "pass", "1. Order not expired");
+      setStep("replay",      "pass", "2. Not a duplicate");
+      setStep("hash",        "pass", "3. Order hashed");
+      setStep("sign",        "pass", "4. Signed");
+      setStep("submit",      "pass", "5. Submitted");
+      setStep("recover",     "pass", "6. Signer recovered");
+      setStep("registry",    "pass", "7. Signer in registry");
+      setStep("validity",    "pass", "8. Key valid");
+      setStep("jurisdiction","pass", "9. Jurisdiction valid");
+      setStep("nonce",       "fail", "10. FAILED: Invalid nonce (submitted " + nonce + ")");
+      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — wrong nonce");
+    } else if (reason.includes("not frozen")) {
+      setStep("expiry",      "pass", "1. Order not expired");
+      setStep("replay",      "pass", "2. Not a duplicate");
+      setStep("hash",        "pass", "3. Order hashed");
+      setStep("sign",        "pass", "4. Signed");
+      setStep("submit",      "pass", "5. Submitted");
+      setStep("recover",     "pass", "6. Signer recovered");
+      setStep("registry",    "pass", "7. Signer in registry");
+      setStep("validity",    "pass", "8. Key valid");
+      setStep("jurisdiction","pass", "9. Jurisdiction valid");
+      setStep("nonce",       "pass", "10. Nonce valid");
+      setStep("result",      "fail", "11. UNFREEZE REJECTED — token is not frozen");
+    } else {
+      setStep("submit", "fail", "5. Transaction failed: " + reason);
+      setStep("result", "fail", "11. ERROR");
+    }
+
+    showResult("fail",
+      actionLabel + " REJECTED",
+      "<strong>Reason:</strong> " + reason + "<br><strong>Signer:</strong> " + signer.address
+    );
+  }
+}
+
+function setStep(name, status, text) {
+  const el = document.getElementById("step-" + name);
+  el.className = "step-row " + status;
+  el.innerHTML =
+    '<div class="step-icon"><span class="step-dot"></span></div>' +
+    '<div class="step-body">' + (text || '') + '</div>';
+}
+
+function showResult(type, title, bodyHtml) {
+  const el = document.getElementById("court-result");
+  el.className = "result-card " + (type === "success" ? "success" : "fail");
+  el.style.display = "block";
+  document.getElementById("result-icon").innerHTML = '<span class="result-dot"></span>';
+  document.getElementById("result-title").textContent = title;
+  document.getElementById("result-body").innerHTML    = bodyHtml;
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,5 +1,13 @@
 {
   "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
   "adminAddress": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "judgeAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+  "judgeAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "outsideJudgeAddress": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+  "territories": {
+    "vellore": "0x126d416f3a49c1fd5dc716462f7278dacacfbc8ea666043df27eaf6c41fc6e7c",
+    "chennai": "0x0e912af37bf2745e1c4b5584c1397af6e8b46913a86d85b2df2c1153921821bf",
+    "tamilNadu": "0x26545c220f1de9567ee7b239175a6be705addea8a718a8c503ff1b90399f8567",
+    "kadapa": "0xf48c1892f71e19329fd53ffc7130c0bd86dae210f2b3f507bdfce2cda70f7145",
+    "andhraPradesh": "0x61249f75d90aaaa6e213018bc6eb6e211cda940fe8563572503a01eb029e5828"
+  }
 }

@@ -1,0 +1,127 @@
+services:
+  node1:
+    image: hyperledger/besu:latest
+    container_name: besu-node1
+    volumes:
+      - ./genesis.json:/genesis.json:ro
+      - ./nodes/node1:/keys:ro
+      - node1-data:/data
+    command: >
+      --data-path=/data
+      --genesis-file=/genesis.json
+      --node-private-key-file=/keys/key
+      --rpc-http-enabled
+      --rpc-http-host=0.0.0.0
+      --rpc-http-port=8545
+      --rpc-http-api=ETH,NET,QBFT,ADMIN,TXPOOL
+      --rpc-ws-enabled
+      --rpc-ws-host=0.0.0.0
+      --rpc-ws-port=8546
+      --host-allowlist="*"
+      --rpc-http-cors-origins="all"
+      --p2p-port=30303
+      --p2p-host=172.28.0.10
+      --min-gas-price=0
+    networks:
+      besu-net:
+        ipv4_address: 172.28.0.10
+    ports:
+      - "8545:8545"
+      - "8546:8546"
+
+  node2:
+    image: hyperledger/besu:latest
+    container_name: besu-node2
+    volumes:
+      - ./genesis.json:/genesis.json:ro
+      - ./nodes/node2:/keys:ro
+      - node2-data:/data
+    command: >
+      --data-path=/data
+      --genesis-file=/genesis.json
+      --node-private-key-file=/keys/key
+      --rpc-http-enabled
+      --rpc-http-host=0.0.0.0
+      --rpc-http-port=8545
+      --rpc-http-api=ETH,NET,QBFT,ADMIN,TXPOOL
+      --rpc-ws-enabled
+      --rpc-ws-host=0.0.0.0
+      --rpc-ws-port=8546
+      --host-allowlist="*"
+      --rpc-http-cors-origins="all"
+      --p2p-port=30303
+      --p2p-host=172.28.0.11
+      --min-gas-price=0
+      --bootnodes=enode://b38ca22ca432df21af7df7a69704be7b67a2ac53ab6c6f37cd8450540eaf75f884d96ef946122fc7b474df05f57560d882db1fb4062337810f1e95c43c059946@172.28.0.10:30303
+    networks:
+      besu-net:
+        ipv4_address: 172.28.0.11
+
+  node3:
+    image: hyperledger/besu:latest
+    container_name: besu-node3
+    volumes:
+      - ./genesis.json:/genesis.json:ro
+      - ./nodes/node3:/keys:ro
+      - node3-data:/data
+    command: >
+      --data-path=/data
+      --genesis-file=/genesis.json
+      --node-private-key-file=/keys/key
+      --rpc-http-enabled
+      --rpc-http-host=0.0.0.0
+      --rpc-http-port=8545
+      --rpc-http-api=ETH,NET,QBFT,ADMIN,TXPOOL
+      --rpc-ws-enabled
+      --rpc-ws-host=0.0.0.0
+      --rpc-ws-port=8546
+      --host-allowlist="*"
+      --rpc-http-cors-origins="all"
+      --p2p-port=30303
+      --p2p-host=172.28.0.12
+      --min-gas-price=0
+      --bootnodes=enode://b38ca22ca432df21af7df7a69704be7b67a2ac53ab6c6f37cd8450540eaf75f884d96ef946122fc7b474df05f57560d882db1fb4062337810f1e95c43c059946@172.28.0.10:30303
+    networks:
+      besu-net:
+        ipv4_address: 172.28.0.12
+
+  node4:
+    image: hyperledger/besu:latest
+    container_name: besu-node4
+    volumes:
+      - ./genesis.json:/genesis.json:ro
+      - ./nodes/node4:/keys:ro
+      - node4-data:/data
+    command: >
+      --data-path=/data
+      --genesis-file=/genesis.json
+      --node-private-key-file=/keys/key
+      --rpc-http-enabled
+      --rpc-http-host=0.0.0.0
+      --rpc-http-port=8545
+      --rpc-http-api=ETH,NET,QBFT,ADMIN,TXPOOL
+      --rpc-ws-enabled
+      --rpc-ws-host=0.0.0.0
+      --rpc-ws-port=8546
+      --host-allowlist="*"
+      --rpc-http-cors-origins="all"
+      --p2p-port=30303
+      --p2p-host=172.28.0.13
+      --min-gas-price=0
+      --bootnodes=enode://b38ca22ca432df21af7df7a69704be7b67a2ac53ab6c6f37cd8450540eaf75f884d96ef946122fc7b474df05f57560d882db1fb4062337810f1e95c43c059946@172.28.0.10:30303
+    networks:
+      besu-net:
+        ipv4_address: 172.28.0.13
+
+networks:
+  besu-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+  node4-data:

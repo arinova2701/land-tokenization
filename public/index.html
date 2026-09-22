@@ -2,361 +2,550 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>CourtKeyRegistry Freeze Protocol — Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NyayaChain — Judicial Property Freeze Portal</title>
+<link rel="icon" href="Logo-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: monospace; background: #fff; color: #111; padding: 20px; max-width: 800px; margin: 0 auto; }
-  h1 { font-size: 18px; margin-bottom: 4px; }
-  .subtitle { font-size: 12px; color: #666; margin-bottom: 16px; }
-  .account-bar { font-size: 11px; background: #f5f5f5; padding: 8px 12px; border: 1px solid #ddd; margin-bottom: 16px; }
-  .tabs { display: flex; gap: 0; border-bottom: 2px solid #111; margin-bottom: 16px; }
-  .tab { padding: 8px 16px; cursor: pointer; font-family: monospace; font-size: 13px; background: #f5f5f5; border: 1px solid #ddd; border-bottom: none; }
-  .tab.active { background: #111; color: #fff; }
-  .panel { display: none; }
-  .panel.active { display: block; }
-  label { display: block; font-size: 12px; margin-top: 12px; color: #555; }
-  input, select { display: block; width: 100%; padding: 8px; font-family: monospace; font-size: 13px; border: 1px solid #ccc; margin-top: 4px; }
-  button { margin-top: 16px; padding: 10px 20px; font-family: monospace; font-size: 13px; background: #111; color: #fff; border: none; cursor: pointer; }
-  button:hover { background: #333; }
-  .result { margin-top: 16px; padding: 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; border: 1px solid #ddd; background: #fafafa; }
-  .result.success { border-color: #2a7; background: #efffef; }
-  .result.fail { border-color: #c33; background: #fff0f0; }
-  .steps { margin-top: 12px; font-size: 12px; line-height: 1.8; }
-  .step { padding: 2px 0; }
-  .step.pass { color: #2a7; }
-  .step.fail { color: #c33; }
-  .step.pending { color: #999; }
-  hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
-  .status-line { font-size: 11px; color: #999; margin-top: 8px; }
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-SemiBold.otf') format('opentype'); font-weight: 600; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Heavy.otf') format('opentype'); font-weight: 800; font-style: normal; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: 'DM Sans', system-ui, sans-serif; font-size: 21px; background: #F5F7FB; color: #475569; padding-top: 88px; }
+h1, h2, h3, h4, h5, h6 { font-family: 'Aileron', system-ui, sans-serif; }
+
+/* ── Nav ── */
+nav {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  height: 64px; max-width: 1200px; width: calc(100% - 48px);
+  background: rgba(11,23,54,0.95); backdrop-filter: blur(10px);
+  display: flex; align-items: center;
+  padding: 0 32px; z-index: 100;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none; flex-shrink: 0;
+}
+.nav-brand img { height: 44px; display: block; }
+.nav-brand-name {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-weight: 700; font-size: 18px; color: #fff;
+  letter-spacing: 3px; text-transform: uppercase;
+}
+.nav-links {
+  display: flex; align-items: center; gap: 32px; margin-left: auto;
+}
+.nav-links a {
+  color: rgba(255,255,255,0.8); text-decoration: none;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 20px; transition: color 0.15s;
+}
+.nav-links a:hover { color: #fff; }
+.nav-status {
+  display: flex; align-items: center; gap: 8px;
+  margin-left: 32px;
+}
+.nav-status-icon { height: 18px; display: block; flex-shrink: 0; }
+.nav-status-icon.disconnected { opacity: 0.4; filter: grayscale(1); }
+.nav-status-text { font-size: 16px; color: #94A3B8; font-family: 'DM Sans', system-ui, sans-serif; }
+
+@keyframes pulse-glow {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(74,222,128,0.7)); }
+  50% { transform: scale(1.2); filter: drop-shadow(0 0 10px rgba(74,222,128,1)); }
+}
+@keyframes text-glow-pulse {
+  0%, 100% { text-shadow: 0 0 8px rgba(74,222,128,0.7), 0 0 16px rgba(74,222,128,0.4); }
+  50% { text-shadow: 0 0 16px rgba(74,222,128,1), 0 0 32px rgba(74,222,128,0.6), 0 0 48px rgba(74,222,128,0.3); }
+}
+.nav-status.connected .nav-status-icon { animation: pulse-glow 1.8s ease-in-out infinite; }
+.nav-status.connected .nav-status-text { color: #4ade80; animation: text-glow-pulse 1.8s ease-in-out infinite; }
+
+/* ── Hero ── */
+.hero {
+  background: linear-gradient(150deg, #0B1736 0%, #101F46 100%);
+  position: relative; overflow: hidden;
+}
+.hero-watermark {
+  position: absolute; right: 5%; top: 50%; transform: translateY(-50%);
+  width: 500px; opacity: 0.06; pointer-events: none; user-select: none; z-index: 0;
+}
+.hero-container {
+  max-width: 800px; margin: 0 auto; padding: 90px 48px;
+  text-align: center; position: relative; z-index: 1;
+}
+.hero h1 {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-size: 57px; font-weight: 700; line-height: 1.18; color: #fff;
+  margin-bottom: 20px; text-align: center;
+}
+.hero p {
+  font-size: 21px; color: #94A3B8; line-height: 1.65;
+  margin-bottom: 32px; font-family: 'DM Sans', system-ui, sans-serif;
+  text-align: center; max-width: 700px; margin-left: auto; margin-right: auto;
+}
+.hero-btn {
+  display: inline-flex; align-items: center;
+  background: #2563EB; color: #fff; text-decoration: none;
+  padding: 14px 34px; border-radius: 8px; font-size: 21px; font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: background 0.15s; border: none; cursor: pointer;
+  margin-bottom: 28px;
+}
+.hero-btn:hover { background: #1D4ED8; }
+.hero-trust {
+  display: flex; align-items: center; justify-content: center;
+  gap: 28px; flex-wrap: nowrap;
+}
+.hero-trust-item {
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 20px; color: #94A3B8;
+}
+.trust-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #C4956A; flex-shrink: 0; display: inline-block;
+}
+
+/* ── Container ── */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 32px; }
+.container-md { max-width: 700px; margin: 0 auto; padding: 0 32px; }
+
+/* ── Stats ── */
+.stats-section { background: #F5F7FB; padding: 40px 0; border-top: 1px solid #E2E8F0; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+.stat-card {
+  padding: 28px 24px; text-align: center;
+  border-right: 1px solid #E2E8F0;
+}
+.stat-card:last-child { border-right: none; }
+.stat-number {
+  font-size: 47px; font-weight: 700; color: #C4956A;
+  line-height: 1; margin-bottom: 6px;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.stat-label {
+  font-size: 16px; font-weight: 600; color: #475569;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* ── How It Works ── */
+.how-section { background: #fff; padding: 40px 0; border-top: 1px solid #E2E8F0; border-bottom: 1px solid #E2E8F0; }
+.how-heading {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-size: 57px; font-weight: 700; color: #0F172A;
+  text-align: center; margin-bottom: 36px;
+}
+.how-steps {
+  display: flex; align-items: center; justify-content: center; gap: 0;
+}
+.how-step {
+  flex: 1; max-width: 220px; text-align: center; padding: 0 16px;
+}
+.step-number {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-size: 44px; font-weight: 700; color: #C4956A;
+  margin-bottom: 6px;
+}
+.step-title {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 22px; font-weight: 700; color: #0F172A;
+  margin-bottom: 4px;
+}
+.step-desc {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 20px; color: #475569; line-height: 1.6;
+}
+.how-arrow {
+  flex-shrink: 0;
+  width: 40px; height: 0;
+  border-top: 2px dashed #D1D5DB;
+  margin-bottom: 28px; /* align visually with step titles */
+}
+
+/* ── Section Header ── */
+.section-header { text-align: center; margin-bottom: 32px; }
+.section-header h2 { font-size: 57px; font-weight: 700; color: #0F172A; margin-bottom: 8px; }
+.section-header p { font-size: 22px; color: #64748B; }
+
+/* ── Verify Section ── */
+.verify-section { background: #F5F7FB; padding: 40px 0; }
+
+/* ── Card ── */
+.card {
+  background: transparent; padding: 0; box-shadow: none; border-radius: 0; margin-bottom: 0;
+}
+
+/* ── Form ── */
+.form-group { margin-bottom: 0; }
+label {
+  display: block; font-size: 18px; font-weight: 600;
+  color: #374151; margin-bottom: 6px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+input, select {
+  display: block; width: 100%; padding: 12px 16px; font-size: 20px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  border: 1px solid #D1D5DB; border-radius: 6px;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  background: #fff; color: #0F172A;
+}
+input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+.btn-primary {
+  display: inline-flex; align-items: center;
+  background: #2563EB; color: #fff; border: none;
+  padding: 12px 28px; border-radius: 8px; font-size: 20px; font-weight: 600;
+  font-family: 'Aileron', system-ui, sans-serif; cursor: pointer;
+  transition: background 0.15s; margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+}
+.btn-primary:hover { background: #1D4ED8; }
+
+/* ── Status Result ── */
+.status-result { margin-top: 28px; padding-top: 24px; border-top: 1px solid #F1F5F9; display: none; }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 18px; border-radius: 20px; font-size: 18px; font-weight: 700;
+  letter-spacing: 0.04em; margin-bottom: 14px;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.status-badge.frozen { background: #FEE2E2; color: #DC2626; }
+.status-badge.not-frozen { background: #DCFCE7; color: #16A34A; }
+.status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.status-details {
+  border-left: 3px solid #CBD5E1; padding: 16px 20px; font-size: 20px; line-height: 1.8; color: #475569;
+}
+.status-details strong { color: #0F172A; font-weight: 600; }
+
+/* ── History ── */
+.history-section { margin-top: 24px; display: none; }
+.history-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #E2E8F0;
+}
+.history-header-title {
+  font-size: 21px; font-weight: 700; color: #0F172A;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.history-entry { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F1F5F9; }
+.history-entry:last-child { border-bottom: none; }
+.history-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 10px;
+  font-size: 14px; font-weight: 700; letter-spacing: 0.07em; flex-shrink: 0; margin-top: 1px;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.history-badge.freeze { background: #FEE2E2; color: #DC2626; }
+.history-badge.unfreeze { background: #DCFCE7; color: #16A34A; }
+.history-meta { font-size: 20px; color: #475569; line-height: 1.6; }
+.history-meta strong { color: #0F172A; font-weight: 600; font-size: 20px; }
+.history-meta .history-sub { font-size: 16px; color: #94A3B8; }
+
+/* ── Footer ── */
+footer {
+  background: #0B1736; color: rgba(255,255,255,0.55);
+  text-align: center; padding: 32px 32px; font-size: 17px; line-height: 1.7;
+}
+.footer-brand {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-weight: 700; font-size: 23px; color: #fff; margin-bottom: 4px;
+}
+.footer-sub {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 18px; color: #64748B;
+}
+
+@media (max-width: 768px) {
+  nav { top: 8px; width: calc(100% - 24px); padding: 0 20px; border-radius: 10px; }
+  body { padding-top: 80px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero h1 { font-size: 28px; }
+  .container, .container-md { padding: 0 16px; }
+  .nav-links { display: none; }
+  .nav-status { display: none; }
+  .hero-container { padding: 56px 24px; }
+  .hero h1 { font-size: 36px; }
+  .hero p { max-width: 100%; }
+  .hero-watermark { width: 280px; opacity: 0.04; }
+  .how-steps { flex-direction: column; align-items: center; gap: 4px; }
+  .how-arrow { width: 0; height: 24px; border-top: none; border-left: 2px dashed #D1D5DB; margin-bottom: 4px; }
+  .how-step { max-width: 100%; }
+}
 </style>
 </head>
 <body>
 
-<h1>CourtKeyRegistry Freeze Protocol</h1>
-<div class="subtitle">Judicially Authenticated Property Token Freeze — Demo</div>
-
-<div class="account-bar" id="accountBar">Connecting to local chain...</div>
-
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('registrar')">Registrar</div>
-  <div class="tab" onclick="switchTab('court')">Court</div>
-  <div class="tab" onclick="switchTab('public')">Public</div>
-</div>
-
-<!-- REGISTRAR TAB -->
-<div class="panel active" id="panel-registrar">
-  <label>Judge Wallet Address</label>
-  <input type="text" id="reg-address" placeholder="0x...">
-
-  <label>Court Name</label>
-  <input type="text" id="reg-court" placeholder="e.g. XVI Assistant City Civil Court Chennai">
-
-  <label>Valid From (unix timestamp, 0 = always)</label>
-  <input type="text" id="reg-from" value="0">
-
-  <label>Valid Until (unix timestamp)</label>
-  <input type="text" id="reg-until" value="9999999999">
-
-  <button onclick="registerJudge()">Register Judge</button>
-  <button onclick="revokeJudge()" style="background:#900">Revoke Judge</button>
-
-  <div class="result" id="reg-result" style="display:none"></div>
-</div>
-
-<!-- COURT TAB -->
-<div class="panel" id="panel-court">
-  <label>Submit As</label>
-  <select id="court-signer" onchange="updateSignerDisplay()">
-    <!-- populated dynamically -->
-  </select>
-  <div class="status-line" id="signer-status"></div>
-
-  <label>Property Token ID</label>
-  <input type="text" id="court-tokenid" placeholder="e.g. 1">
-
-  <label>Case Number</label>
-  <input type="text" id="court-case" placeholder="e.g. I.A.No.2 of 2024 in O.S.No.5111 of 2024">
-
-  <button onclick="submitFreeze()">Sign & Submit Freeze Order</button>
-
-  <div class="steps" id="court-steps" style="display:none">
-    <div class="step" id="step-hash">1. Hash order content</div>
-    <div class="step" id="step-sign">2. Sign hash with selected account</div>
-    <div class="step" id="step-submit">3. Submit to contract for on-chain verification</div>
-    <div class="step" id="step-recover">4. Contract recovers signer via ECDSA</div>
-    <div class="step" id="step-registry">5. Check signer against CourtKeyRegistry</div>
-    <div class="step" id="step-validity">6. Check key validity window</div>
-    <div class="step" id="step-result">7. Result</div>
+<!-- ── Nav ── -->
+<nav>
+  <a href="index.html" class="nav-brand">
+    <img src="Logo-icon.png" alt="NyayaChain icon">
+    <span class="nav-brand-name">NyayaChain</span>
+  </a>
+  <div class="nav-links">
+    <a href="court.html">Court Portal</a>
+    <a href="registrar.html">Registrar</a>
   </div>
+  <div class="nav-status" id="navStatus">
+    <img src="connected-icon.png" id="navDot" class="nav-status-icon disconnected" alt="">
+    <span class="nav-status-text" id="navStatusText">Connecting...</span>
+  </div>
+</nav>
 
-  <div class="result" id="court-result" style="display:none"></div>
-</div>
+<!-- ── Hero ── -->
+<section class="hero">
+  <img src="Logo-icon.png" alt="" class="hero-watermark" aria-hidden="true">
+  <div class="hero-container">
+    <h1>Judicial Property Records.<br>Secured on Blockchain.</h1>
+    <p>NyayaChain provides cryptographically authenticated records for court-ordered property freezes, enabling transparent and tamper-evident verification.</p>
+    <a href="#verify" class="hero-btn">Verify Property Status &rarr;</a>
+    <div class="hero-trust">
+      <span class="hero-trust-item"><span class="trust-dot"></span>Immutable Records</span>
+      <span class="hero-trust-item"><span class="trust-dot"></span>Court Verified</span>
+      <span class="hero-trust-item"><span class="trust-dot"></span>Cryptographically Authenticated</span>
+    </div>
+  </div>
+</section>
 
-<!-- PUBLIC TAB -->
-<div class="panel" id="panel-public">
-  <label>Property Token ID</label>
-  <input type="text" id="pub-tokenid" placeholder="e.g. 1">
+<!-- ── Stats ── -->
+<section class="stats-section">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number" id="stat-judges">02</div>
+        <div class="stat-label">Registered Judges</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">03</div>
+        <div class="stat-label">Properties Tracked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="stat-orders">—</div>
+        <div class="stat-label">Orders Processed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">07</div>
+        <div class="stat-label">Verification Checks</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-  <button onclick="checkFrozen()">Check Freeze Status</button>
+<!-- ── How It Works ── -->
+<section class="how-section">
+  <div class="container">
+    <h2 class="how-heading">How NyayaChain Works</h2>
+    <div class="how-steps">
+      <div class="how-step">
+        <div class="step-number">01</div>
+        <div class="step-title">Court Order</div>
+        <div class="step-desc">Authorized court issues a property freeze order</div>
+      </div>
+      <div class="how-arrow"></div>
+      <div class="how-step">
+        <div class="step-number">02</div>
+        <div class="step-title">Blockchain Registration</div>
+        <div class="step-desc">Order is cryptographically recorded on-chain</div>
+      </div>
+      <div class="how-arrow"></div>
+      <div class="how-step">
+        <div class="step-number">03</div>
+        <div class="step-title">Property Verification</div>
+        <div class="step-desc">Authorized parties verify current judicial status</div>
+      </div>
+      <div class="how-arrow"></div>
+      <div class="how-step">
+        <div class="step-number">04</div>
+        <div class="step-title">Audit Trail</div>
+        <div class="step-desc">Every action remains independently verifiable</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-  <div class="result" id="pub-result" style="display:none"></div>
-</div>
+<!-- ── Verify Section ── -->
+<section class="verify-section" id="verify">
+  <div class="container-md">
+    <div class="section-header">
+      <h2>Verify a Property</h2>
+      <p>Look up the blockchain-verified freeze status of any registered property token</p>
+    </div>
+    <div class="card">
+      <label for="pub-tokenid">Property Token ID</label>
+      <input type="text" id="pub-tokenid" placeholder="Enter token ID — e.g. 1, 2, or 3" onkeydown="if(event.key==='Enter') checkStatus()">
+      <button class="btn-primary" onclick="checkStatus()">Check Status</button>
+
+      <div class="status-result" id="status-result">
+        <div class="status-badge" id="status-badge"><span class="dot"></span><span id="status-text"></span></div>
+        <div class="status-details" id="status-details"></div>
+      </div>
+
+      <div class="history-section" id="pub-history">
+        <div class="history-header">
+          <span class="history-header-title">Freeze / Unfreeze History</span>
+        </div>
+        <div id="pub-history-entries"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-brand">NyayaChain</div>
+  <div class="footer-sub">Judicially Authenticated Property Freeze Protocol</div>
+</footer>
 
 <script>
 const ABI = [
   "function admin() view returns (address)",
-  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active)",
+  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode)",
+  "function judgeNonce(address) view returns (uint256)",
   "function frozen(uint256) view returns (bool)",
   "function frozenBy(uint256) view returns (string)",
-  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil)",
+  "function usedOrders(bytes32) view returns (bool)",
+  "function propertyTerritory(uint256) view returns (bytes32)",
+  "function parentTerritory(bytes32) view returns (bytes32)",
+  "function territoryName(bytes32) view returns (string)",
+  "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
+  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce)",
+  "function setTerritory(bytes32 code, string name, bytes32 parent)",
+  "function registerProperty(uint256 tokenId, bytes32 territory)",
+  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory)",
   "function revokeJudge(address signer)",
-  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, bytes signature)",
-  "event JudgeRegistered(address indexed signer, string courtName)",
-  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber)"
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
+  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, string territory)",
+  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
+  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory)"
 ];
 
-let provider, contract, signers, config;
+let provider, contract, config;
 
 async function init() {
+  const dot  = document.getElementById("navDot");
+  const text = document.getElementById("navStatusText");
   try {
     provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-    const network = await provider.getNetwork();
-
+    await provider.getNetwork();
     const resp = await fetch("config.json");
     config = await resp.json();
-
     contract = new ethers.Contract(config.contractAddress, ABI, provider);
 
-    // Get first 5 accounts from hardhat node
-    const accounts = await provider.listAccounts();
-    signers = accounts;
+    dot.classList.remove("disconnected");
+    text.textContent = "Connected";
+    document.getElementById("navStatus").classList.add("connected");
 
-    document.getElementById("accountBar").textContent =
-      "Connected to local chain (ID: " + network.chainId + ") | Contract: " + config.contractAddress;
-
-    // Populate court signer dropdown
-    const select = document.getElementById("court-signer");
-    select.innerHTML = "";
-
-    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
-      const addr = accounts[i].address;
-      let label = addr.slice(0, 10) + "..." + addr.slice(-6);
-
-      if (addr.toLowerCase() === config.adminAddress.toLowerCase()) {
-        label += " (Registrar)";
-      } else if (addr.toLowerCase() === config.judgeAddress.toLowerCase()) {
-        label += " (Registered Judge)";
-      } else {
-        label += " (Unauthorized)";
-      }
-
-      const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = label;
-      select.appendChild(opt);
-    }
-
-    // Default to judge account
-    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
-      if (accounts[i].address.toLowerCase() === config.judgeAddress.toLowerCase()) {
-        select.value = i;
-        break;
-      }
-    }
-
-    updateSignerDisplay();
-
-    // Pre-fill registrar tab with judge address
-    document.getElementById("reg-address").value = config.judgeAddress;
-
+    loadStats();
   } catch (e) {
-    document.getElementById("accountBar").textContent =
-      "ERROR: Could not connect to local chain at 127.0.0.1:8545. Is hardhat node running?";
+    dot.classList.add("disconnected");
+    text.textContent = "Not connected";
     console.error(e);
   }
 }
 
-function switchTab(name) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
-  event.target.classList.add("active");
-  document.getElementById("panel-" + name).classList.add("active");
-}
-
-async function updateSignerDisplay() {
-  const idx = document.getElementById("court-signer").value;
-  const addr = signers[idx].address;
-  const statusEl = document.getElementById("signer-status");
-
+async function loadStats() {
   try {
-    const info = await contract.registry(addr);
-    if (info.active) {
-      statusEl.textContent = "Registry status: REGISTERED at " + info.courtName;
-      statusEl.style.color = "#2a7";
-    } else {
-      statusEl.textContent = "Registry status: NOT REGISTERED";
-      statusEl.style.color = "#c33";
+    let judgeCount = 0;
+    for (const addr of [config.judgeAddress, config.outsideJudgeAddress]) {
+      if (!addr) continue;
+      try { const info = await contract.registry(addr); if (info.active) judgeCount++; } catch(_) {}
     }
-  } catch (e) {
-    statusEl.textContent = "Registry status: NOT REGISTERED";
-    statusEl.style.color = "#c33";
-  }
+    if (judgeCount > 0) {
+      document.getElementById("stat-judges").textContent = String(judgeCount).padStart(2, "0");
+    }
+
+    let total = 0;
+    for (let t = 1; t <= 3; t++) {
+      try { total += Number(await contract.getFreezeHistoryLength(t)); } catch(_) {}
+    }
+    document.getElementById("stat-orders").textContent = total === 0 ? "—" : String(total).padStart(2, "0");
+  } catch (e) { /* silent */ }
 }
 
-async function registerJudge() {
-  const resultEl = document.getElementById("reg-result");
-  resultEl.style.display = "block";
-  resultEl.className = "result";
+async function checkStatus() {
+  const tokenId = document.getElementById("pub-tokenid").value.trim();
+  if (!tokenId) return;
 
-  try {
-    const addr = document.getElementById("reg-address").value.trim();
-    const court = document.getElementById("reg-court").value.trim();
-    const from = document.getElementById("reg-from").value.trim();
-    const until = document.getElementById("reg-until").value.trim();
+  const resultEl   = document.getElementById("status-result");
+  const badgeEl    = document.getElementById("status-badge");
+  const statusText = document.getElementById("status-text");
+  const detailsEl  = document.getElementById("status-details");
+  const historySection = document.getElementById("pub-history");
+  const entriesEl  = document.getElementById("pub-history-entries");
 
-    // Connect as admin (account 0)
-    const adminSigner = signers[0];
-    const tx = await contract.connect(adminSigner).registerJudge(addr, court, from, until);
-    const receipt = await tx.wait();
-
-    resultEl.className = "result success";
-    resultEl.textContent = "Judge registered successfully\n\n" +
-      "Address: " + addr + "\n" +
-      "Court: " + court + "\n" +
-      "Tx: " + receipt.hash;
-  } catch (e) {
-    resultEl.className = "result fail";
-    resultEl.textContent = "Registration failed: " + (e.reason || e.message);
-  }
-}
-
-async function revokeJudge() {
-  const resultEl = document.getElementById("reg-result");
-  resultEl.style.display = "block";
-
-  try {
-    const addr = document.getElementById("reg-address").value.trim();
-    const adminSigner = signers[0];
-    const tx = await contract.connect(adminSigner).revokeJudge(addr);
-    await tx.wait();
-
-    resultEl.className = "result success";
-    resultEl.textContent = "Judge revoked: " + addr;
-  } catch (e) {
-    resultEl.className = "result fail";
-    resultEl.textContent = "Revoke failed: " + (e.reason || e.message);
-  }
-}
-
-async function submitFreeze() {
-  const stepsEl = document.getElementById("court-steps");
-  const resultEl = document.getElementById("court-result");
-  stepsEl.style.display = "block";
   resultEl.style.display = "none";
-
-  // Reset all steps
-  for (let i = 1; i <= 7; i++) {
-    const el = document.getElementById("step-" + ["hash","sign","submit","recover","registry","validity","result"][i-1]);
-    el.className = "step pending";
-  }
-
-  const idx = document.getElementById("court-signer").value;
-  const signer = signers[idx];
-  const tokenId = document.getElementById("court-tokenid").value.trim();
-  const caseNumber = document.getElementById("court-case").value.trim();
+  historySection.style.display = "none";
 
   try {
-    // Step 1: hash
-    const orderData = caseNumber + " | token:" + tokenId;
-    const orderHash = ethers.keccak256(ethers.toUtf8Bytes(orderData));
-    setStep("hash", "pass", "1. Order hash: " + orderHash);
-
-    // Step 2: sign
-    const signature = await signer.signMessage(ethers.getBytes(orderHash));
-    setStep("sign", "pass", "2. Signed by: " + signer.address);
-
-    // Step 3: submit
-    setStep("submit", "pass", "3. Submitting to contract...");
-
-    const tx = await contract.connect(signer).submitFreezeOrder(
-      tokenId, caseNumber, orderHash, signature
-    );
-    const receipt = await tx.wait();
-
-    // Steps 4-6 passed (contract didn't revert)
-    setStep("recover", "pass", "4. Contract recovered signer via ECDSA");
-    setStep("registry", "pass", "5. Signer found in CourtKeyRegistry");
-    setStep("validity", "pass", "6. Key is within valid time window");
-    setStep("result", "pass", "7. FREEZE ACCEPTED");
+    const [isFrozen, caseNum, terrCode] = await Promise.all([
+      contract.frozen(tokenId),
+      contract.frozenBy(tokenId),
+      contract.propertyTerritory(tokenId)
+    ]);
+    const terrName = await contract.territoryName(terrCode);
 
     resultEl.style.display = "block";
-    resultEl.className = "result success";
-    resultEl.textContent = "Token #" + tokenId + " is now FROZEN\n\n" +
-      "Case: " + caseNumber + "\n" +
-      "Authorized by: " + signer.address + "\n" +
-      "Tx: " + receipt.hash;
-
-  } catch (e) {
-    // Figure out which step failed
-    const reason = e.reason || e.message || "Unknown error";
-
-    if (reason.includes("Unregistered or revoked")) {
-      setStep("hash", "pass", "1. Order hashed");
-      setStep("sign", "pass", "2. Signed by: " + signer.address);
-      setStep("submit", "pass", "3. Submitted to contract");
-      setStep("recover", "pass", "4. Contract recovered signer: " + signer.address);
-      setStep("registry", "fail", "5. FAILED: Signer not found in CourtKeyRegistry");
-      setStep("validity", "pending", "6. ----");
-      setStep("result", "fail", "7. FREEZE REJECTED");
-    } else if (reason.includes("expired") || reason.includes("not yet valid")) {
-      setStep("hash", "pass", "1. Order hashed");
-      setStep("sign", "pass", "2. Signed by: " + signer.address);
-      setStep("submit", "pass", "3. Submitted to contract");
-      setStep("recover", "pass", "4. Signer recovered");
-      setStep("registry", "pass", "5. Signer found in registry");
-      setStep("validity", "fail", "6. FAILED: Key expired or not yet valid");
-      setStep("result", "fail", "7. FREEZE REJECTED");
-    } else {
-      setStep("submit", "fail", "3. Transaction failed");
-      setStep("result", "fail", "7. ERROR");
-    }
-
-    resultEl.style.display = "block";
-    resultEl.className = "result fail";
-    resultEl.textContent = "FREEZE REJECTED\n\nReason: " + reason + "\n\nSigner: " + signer.address;
-  }
-}
-
-function setStep(name, status, text) {
-  const el = document.getElementById("step-" + name);
-  el.className = "step " + status;
-  el.textContent = text;
-}
-
-async function checkFrozen() {
-  const resultEl = document.getElementById("pub-result");
-  resultEl.style.display = "block";
-
-  try {
-    const tokenId = document.getElementById("pub-tokenid").value.trim();
-    const isFrozen = await contract.frozen(tokenId);
-    const caseNum = await contract.frozenBy(tokenId);
-
     if (isFrozen) {
-      resultEl.className = "result fail";
-      resultEl.textContent = "Token #" + tokenId + " is FROZEN\n\nFrozen by court order: " + caseNum;
+      badgeEl.className = "status-badge frozen";
+      statusText.textContent = "FROZEN";
+      detailsEl.innerHTML =
+        "<strong>Token:</strong> #" + tokenId + "<br>" +
+        "<strong>Status:</strong> Property is currently frozen by court order<br>" +
+        "<strong>Court Order:</strong> " + caseNum + "<br>" +
+        "<strong>Territory:</strong> " + terrName;
     } else {
-      resultEl.className = "result success";
-      resultEl.textContent = "Token #" + tokenId + " is NOT FROZEN\n\nNo active freeze order on this property.";
+      badgeEl.className = "status-badge not-frozen";
+      statusText.textContent = "NOT FROZEN";
+      detailsEl.innerHTML =
+        "<strong>Token:</strong> #" + tokenId + "<br>" +
+        "<strong>Status:</strong> No active freeze order on this property<br>" +
+        "<strong>Territory:</strong> " + terrName;
     }
+
+    // Load full history
+    const len = await contract.getFreezeHistoryLength(tokenId);
+    const count = Number(len);
+    historySection.style.display = "block";
+    entriesEl.innerHTML = "";
+
+    if (count === 0) {
+      entriesEl.innerHTML = '<p style="font-size:13px; color:#94A3B8; padding:12px 0;">No history for token #' + tokenId + '.</p>';
+      return;
+    }
+
+    for (let i = count - 1; i >= 0; i--) {
+      const entry = await contract.getFreezeHistoryEntry(tokenId, i);
+      const ts = new Date(Number(entry.timestamp) * 1000).toLocaleString("en-IN", { dateStyle:"medium", timeStyle:"short" });
+      const isFreeze = entry.isFreezeAction;
+      const div = document.createElement("div");
+      div.className = "history-entry";
+      div.innerHTML =
+        '<span class="history-badge ' + (isFreeze ? 'freeze' : 'unfreeze') + '">' + (isFreeze ? 'FREEZE' : 'UNFREEZE') + '</span>' +
+        '<div class="history-meta">' +
+          '<strong>' + entry.caseNumber + '</strong><br>' +
+          '<span class="history-sub">' + ts + ' &nbsp;&middot;&nbsp; Nonce ' + entry.nonce.toString() + ' &nbsp;&middot;&nbsp; ' + entry.signer.slice(0,10) + '...' + entry.signer.slice(-6) + '</span>' +
+        '</div>';
+      entriesEl.appendChild(div);
+    }
+
   } catch (e) {
-    resultEl.className = "result fail";
-    resultEl.textContent = "Error: " + e.message;
+    resultEl.style.display = "block";
+    badgeEl.className = "status-badge";
+    badgeEl.style.background = "#FEF3C7";
+    badgeEl.style.color = "#92400E";
+    statusText.textContent = "Error";
+    detailsEl.textContent = e.message;
   }
 }
 
-// Start
 init();
 </script>
 </body>

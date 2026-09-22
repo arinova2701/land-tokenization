@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NyayaChain — Registrar Portal</title>
+<link rel="icon" href="Logo-icon.png">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-SemiBold.otf') format('opentype'); font-weight: 600; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Heavy.otf') format('opentype'); font-weight: 800; font-style: normal; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; font-size: 21px; background: #F8FAFC; color: #475569; padding-top: 88px; }
+
+h1, h2, h3, h4, h5, h6 { font-family: 'Aileron', system-ui, sans-serif; }
+
+/* ── Nav ── */
+nav {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  height: 64px; max-width: 1200px; width: calc(100% - 48px);
+  background: rgba(11,23,54,0.95); backdrop-filter: blur(10px);
+  display: flex; align-items: center;
+  padding: 0 32px; z-index: 100;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none; flex-shrink: 0;
+}
+.nav-brand img { height: 36px; display: block; }
+.nav-brand-name {
+  font-family: 'Aileron', system-ui, sans-serif;
+  font-weight: 700; font-size: 21px; color: #fff;
+  letter-spacing: 3px; text-transform: uppercase;
+}
+.nav-links {
+  display: flex; align-items: center; gap: 32px; margin-left: auto;
+}
+.nav-links a {
+  color: rgba(255,255,255,0.8); text-decoration: none;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 20px; transition: color 0.15s;
+}
+.nav-links a:hover { color: #fff; }
+.nav-links a.nav-active { color: #fff; border-bottom: 2px solid rgba(255,255,255,0.5); padding-bottom: 2px; }
+.nav-status {
+  display: flex; align-items: center; gap: 8px; margin-left: 32px;
+}
+.nav-status-icon { height: 18px; display: block; flex-shrink: 0; }
+.nav-status-icon.disconnected { opacity: 0.4; filter: grayscale(1); }
+.nav-status-text { font-size: 16px; color: #94A3B8; font-family: 'DM Sans', system-ui, sans-serif; }
+
+@keyframes pulse-glow {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(74,222,128,0.7)); }
+  50% { transform: scale(1.2); filter: drop-shadow(0 0 10px rgba(74,222,128,1)); }
+}
+@keyframes text-glow-pulse {
+  0%, 100% { text-shadow: 0 0 8px rgba(74,222,128,0.7), 0 0 16px rgba(74,222,128,0.4); }
+  50% { text-shadow: 0 0 16px rgba(74,222,128,1), 0 0 32px rgba(74,222,128,0.6), 0 0 48px rgba(74,222,128,0.3); }
+}
+.nav-status.connected .nav-status-icon { animation: pulse-glow 1.8s ease-in-out infinite; }
+.nav-status.connected .nav-status-text { color: #4ade80; animation: text-glow-pulse 1.8s ease-in-out infinite; }
+
+/* ── Connection Bar ── */
+.conn-bar {
+  background: #F8FAFC; border-bottom: 1px solid #E2E8F0;
+  color: #94A3B8; font-size: 13px;
+  text-align: center; padding: 4px 32px;
+}
+.conn-bar.error { background: #FEF2F2; border-bottom-color: #FCA5A5; color: #DC2626; }
+
+/* ── Page watermark ── */
+.page-watermark {
+  position: fixed; right: -2%; bottom: -5%; width: 450px;
+  opacity: 0.05; z-index: 0; pointer-events: none; user-select: none;
+}
+
+/* ── Portal Banner ── */
+.portal-banner {
+  background: linear-gradient(135deg, #0B1736 0%, #112044 100%);
+  padding: 20px 40px; position: relative; z-index: 1;
+}
+.banner-title {
+  font-size: 29px; font-weight: 700; color: #fff; margin-bottom: 4px;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.banner-sub { font-size: 21px; color: rgba(255,255,255,0.62); }
+
+/* ── Layout ── */
+.page-content { max-width: 720px; margin: 0 auto; padding: 24px 32px 56px; position: relative; z-index: 1; }
+
+/* ── Card ── */
+.card { background: transparent; padding: 28px 0; margin-bottom: 0; border-bottom: 1px solid #E2E8F0; }
+.card:last-of-type { border-bottom: none; }
+.card-title {
+  font-size: 23px; font-weight: 700; color: #0F172A; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 20px; padding-bottom: 12px;
+  border-bottom: 2px solid #0B1736;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+
+/* ── Form ── */
+.form-group { margin-bottom: 14px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+label {
+  display: block; font-size: 18px; font-weight: 600;
+  color: #374151; margin-bottom: 6px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+.label-note { font-size: 14px; font-weight: 400; color: #94A3B8; margin-left: 6px; }
+input, select {
+  display: block; width: 100%; padding: 12px 16px; font-size: 20px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  border: 1px solid #D1D5DB; border-radius: 6px;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  background: #fff; color: #0F172A;
+}
+input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+/* ── Admin info ── */
+.admin-info {
+  display: flex; align-items: center; gap: 8px;
+  background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px;
+  padding: 12px 16px; margin-bottom: 20px; font-size: 20px; color: #1E40AF;
+}
+.admin-addr { font-family: monospace; font-size: 14px; color: #2563EB; }
+
+/* ── Revoke section ── */
+.revoke-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid #F1F5F9; }
+.revoke-title {
+  font-size: 17px; font-weight: 600; color: #374151; margin-bottom: 6px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+.revoke-note { font-size: 16px; color: #94A3B8; margin-bottom: 10px; }
+
+/* ── Buttons ── */
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 32px; border-radius: 8px; font-size: 20px; font-weight: 600;
+  font-family: 'Aileron', system-ui, sans-serif; cursor: pointer; transition: all 0.15s;
+}
+.btn-primary { background: #2563EB; color: #fff; border: 2px solid #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+.btn-primary:hover { background: #1D4ED8; border-color: #1D4ED8; }
+.btn-danger { background: transparent; color: #DC2626; border: 2px solid #DC2626; }
+.btn-danger:hover { background: #FEF2F2; }
+
+/* ── Result ── */
+.result-card { border-radius: 10px; padding: 20px 22px; display: none; margin-top: 20px; }
+.result-card.success { background: #F0FDF4; border: 1px solid #86EFAC; }
+.result-card.fail    { background: #FEF2F2; border: 1px solid #FCA5A5; }
+.result-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.result-dot {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+}
+.result-card.success .result-dot { background: #16A34A; }
+.result-card.fail    .result-dot { background: #DC2626; }
+.result-header-title {
+  font-size: 22px; font-weight: 700;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.result-card.success .result-header-title { color: #15803D; }
+.result-card.fail    .result-header-title { color: #DC2626; }
+.result-body { font-size: 20px; line-height: 1.7; color: #374151; }
+.result-body strong { font-weight: 600; color: #0F172A; }
+.result-body .tx-hash {
+  font-family: monospace; font-size: 14px; color: #64748B; word-break: break-all;
+  margin-top: 8px; background: rgba(0,0,0,0.04); padding: 6px 8px; border-radius: 4px; display: block;
+}
+
+/* ── Judge rows ── */
+.judge-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 8px;
+  font-size: 13px;
+}
+.judge-row-left { display: flex; flex-direction: column; gap: 2px; }
+.judge-name { font-weight: 600; color: #0F172A; font-size: 20px; }
+.judge-meta { font-size: 16px; color: #94A3B8; }
+.judge-badge {
+  padding: 3px 10px; border-radius: 10px; font-size: 14px; font-weight: 700; flex-shrink: 0;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.judge-badge.active  { background: #DCFCE7; color: #16A34A; }
+.judge-badge.revoked { background: #FEE2E2; color: #DC2626; }
+
+/* ── Footer ── */
+footer {
+  background: #0B1736; color: rgba(255,255,255,0.55);
+  text-align: center; padding: 28px 32px; font-size: 17px;
+}
+.footer-brand { font-family: 'Aileron', system-ui, sans-serif; font-weight: 700; font-size: 23px; color: #fff; margin-bottom: 4px; }
+.footer-sub { font-family: 'DM Sans', system-ui, sans-serif; font-size: 18px; color: #64748B; }
+
+@media (max-width: 640px) {
+  nav { top: 8px; width: calc(100% - 24px); padding: 0 20px; border-radius: 10px; }
+  body { padding-top: 80px; }
+  .page-content { padding: 16px 16px 48px; }
+  .portal-banner { padding: 16px 20px; }
+  .form-row { grid-template-columns: 1fr; }
+  .btn-row { flex-direction: column; }
+  .btn { width: 100%; justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav>
+  <a href="index.html" class="nav-brand">
+    <img src="Logo-icon.png" alt="NyayaChain icon">
+    <span class="nav-brand-name">NyayaChain</span>
+  </a>
+  <div class="nav-links">
+    <a href="court.html">Court Portal</a>
+    <a href="registrar.html" class="nav-active">Registrar</a>
+  </div>
+  <div class="nav-status" id="navStatus">
+    <img src="connected-icon.png" id="navDot" class="nav-status-icon disconnected" alt="">
+    <span class="nav-status-text" id="navStatusText">Connecting...</span>
+  </div>
+</nav>
+
+<!-- ── Page Watermark ── -->
+<img src="Logo-icon.png" alt="" class="page-watermark" aria-hidden="true">
+
+<!-- ── Connection Bar ── -->
+<div class="conn-bar" id="connBar">Connecting to local chain...</div>
+
+<!-- ── Portal Banner ── -->
+<div class="portal-banner">
+  <div class="banner-title">Land Registry Authority</div>
+  <div class="banner-sub">Manage authorized judicial signers for court-ordered property freeze operations</div>
+</div>
+
+<!-- ── Page Content ── -->
+<div class="page-content">
+
+  <!-- Register Card -->
+  <div class="card">
+    <div class="card-title">Register Authorized Judge</div>
+
+    <div class="admin-info" id="admin-info">
+      <div>Registrar (admin) account: <span class="admin-addr" id="admin-addr">loading...</span></div>
+    </div>
+
+    <div class="form-group">
+      <label for="reg-address">Judge Wallet Address</label>
+      <input type="text" id="reg-address" placeholder="0x...">
+    </div>
+
+    <div class="form-group">
+      <label for="reg-court">Court Name</label>
+      <input type="text" id="reg-court" placeholder="e.g. District Court Vellore">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="reg-level">Court Level</label>
+        <select id="reg-level">
+          <option value="1">1 — District Munsif</option>
+          <option value="2">2 — Sub Court</option>
+          <option value="3" selected>3 — District Court</option>
+          <option value="4">4 — High Court</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="reg-territory">Court Territory</label>
+        <select id="reg-territory">
+          <option value="vellore">Vellore</option>
+          <option value="chennai">Chennai</option>
+          <option value="tamil_nadu">Tamil Nadu (state-wide)</option>
+          <option value="kadapa">Kadapa</option>
+          <option value="andhra_pradesh">Andhra Pradesh (state-wide)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="reg-from">Valid From <span class="label-note">unix timestamp, 0 = always</span></label>
+        <input type="text" id="reg-from" value="0">
+      </div>
+      <div class="form-group">
+        <label for="reg-until">Valid Until <span class="label-note">unix timestamp</span></label>
+        <input type="text" id="reg-until" value="9999999999">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="registerJudge()">Register Judge</button>
+    </div>
+
+    <div class="revoke-section">
+      <div class="revoke-title">Revoke Authorization</div>
+      <div class="revoke-note">Immediately disables a judge's ability to submit freeze orders. Address is pre-filled from the field above.</div>
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn btn-danger" onclick="revokeJudge()">Revoke Judge</button>
+      </div>
+    </div>
+
+    <div class="result-card" id="reg-result">
+      <div class="result-header">
+        <span id="reg-result-icon"></span>
+        <span class="result-header-title" id="reg-result-title"></span>
+      </div>
+      <div class="result-body" id="reg-result-body"></div>
+    </div>
+  </div>
+
+  <!-- Registered Judges Preview Card -->
+  <div class="card">
+    <div class="card-title">Registered Judges</div>
+    <div id="judges-list"><p style="font-size:13px;color:#94A3B8;">Loading...</p></div>
+  </div>
+
+</div><!-- /page-content -->
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-brand">NyayaChain</div>
+  <div class="footer-sub">Judicially Authenticated Property Freeze Protocol</div>
+</footer>
+
+<script>
+const ABI = [
+  "function admin() view returns (address)",
+  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode)",
+  "function judgeNonce(address) view returns (uint256)",
+  "function frozen(uint256) view returns (bool)",
+  "function frozenBy(uint256) view returns (string)",
+  "function usedOrders(bytes32) view returns (bool)",
+  "function propertyTerritory(uint256) view returns (bytes32)",
+  "function parentTerritory(bytes32) view returns (bytes32)",
+  "function territoryName(bytes32) view returns (string)",
+  "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
+  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce)",
+  "function setTerritory(bytes32 code, string name, bytes32 parent)",
+  "function registerProperty(uint256 tokenId, bytes32 territory)",
+  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory)",
+  "function revokeJudge(address signer)",
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
+  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, string territory)",
+  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
+  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory)"
+];
+
+const COURT_LEVELS = { 1: "District Munsif", 2: "Sub Court", 3: "District Court", 4: "High Court" };
+const TERRITORY_KEYS = {
+  vellore: null, chennai: null, tamil_nadu: null, kadapa: null, andhra_pradesh: null
+};
+
+let provider, contract, signers, config;
+
+async function init() {
+  const connBar = document.getElementById("connBar");
+  try {
+    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const network = await provider.getNetwork();
+    const resp = await fetch("config.json");
+    config = await resp.json();
+    contract = new ethers.Contract(config.contractAddress, ABI, provider);
+    const accounts = await provider.listAccounts();
+    signers = accounts;
+
+    for (const key of Object.keys(TERRITORY_KEYS)) {
+      TERRITORY_KEYS[key] = ethers.keccak256(ethers.toUtf8Bytes(key));
+    }
+
+    const short = config.contractAddress.slice(0, 10) + "..." + config.contractAddress.slice(-6);
+    connBar.textContent = "Connected — Chain ID: " + network.chainId + " | Contract: " + short;
+    document.getElementById("navDot").classList.remove("disconnected");
+    document.getElementById("navStatusText").textContent = "Connected";
+    document.getElementById("navStatus").classList.add("connected");
+
+    document.getElementById("admin-addr").textContent = config.adminAddress;
+    document.getElementById("reg-address").value = config.judgeAddress;
+
+    loadJudges();
+  } catch (e) {
+    connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
+    connBar.className = "conn-bar error";
+    document.getElementById("navStatusText").textContent = "Not connected";
+    console.error(e);
+  }
+}
+
+async function loadJudges() {
+  const listEl = document.getElementById("judges-list");
+  const judgeAddresses = [config.judgeAddress, config.outsideJudgeAddress].filter(Boolean);
+  if (!judgeAddresses.length) {
+    listEl.innerHTML = '<p style="font-size:13px;color:#94A3B8;">No judge addresses in config.</p>';
+    return;
+  }
+  listEl.innerHTML = "";
+  for (const addr of judgeAddresses) {
+    try {
+      const info = await contract.registry(addr);
+      const terrName = info.active ? await contract.territoryName(info.territoryCode) : "—";
+      const nonce = await contract.judgeNonce(addr);
+      const div = document.createElement("div");
+      div.className = "judge-row";
+      div.innerHTML =
+        '<div class="judge-row-left">' +
+          '<span class="judge-name">' + info.courtName + '</span>' +
+          '<span class="judge-meta">' + addr.slice(0,12) + '...' + addr.slice(-6) +
+          ' &nbsp;&middot;&nbsp; ' + (COURT_LEVELS[info.courtLevel] || 'Unknown') +
+          ' &nbsp;&middot;&nbsp; ' + terrName +
+          ' &nbsp;&middot;&nbsp; Nonce: ' + nonce.toString() + '</span>' +
+        '</div>' +
+        '<span class="judge-badge ' + (info.active ? 'active' : 'revoked') + '">' +
+          (info.active ? 'ACTIVE' : 'REVOKED') + '</span>';
+      listEl.appendChild(div);
+    } catch (_) {
+      const div = document.createElement("div");
+      div.className = "judge-row";
+      div.innerHTML =
+        '<div class="judge-row-left">' +
+          '<span class="judge-name" style="color:#94A3B8">' + addr.slice(0,12) + '...' + addr.slice(-6) + '</span>' +
+          '<span class="judge-meta">Not registered</span>' +
+        '</div>' +
+        '<span class="judge-badge revoked">NONE</span>';
+      listEl.appendChild(div);
+    }
+  }
+}
+
+async function registerJudge() {
+  const resultEl = document.getElementById("reg-result");
+  resultEl.style.display = "none";
+  try {
+    const addr    = document.getElementById("reg-address").value.trim();
+    const court   = document.getElementById("reg-court").value.trim();
+    const level   = parseInt(document.getElementById("reg-level").value);
+    const terrKey = document.getElementById("reg-territory").value;
+    const terrCode = TERRITORY_KEYS[terrKey];
+    const from    = document.getElementById("reg-from").value.trim();
+    const until   = document.getElementById("reg-until").value.trim();
+    const adminSigner = signers[0];
+    const tx = await contract.connect(adminSigner).registerJudge(addr, court, from, until, level, terrCode);
+    const receipt = await tx.wait();
+    showResult("success", "Judge Registered",
+      "<strong>Address:</strong> " + addr + "<br>" +
+      "<strong>Court:</strong> " + court + "<br>" +
+      "<strong>Level:</strong> " + COURT_LEVELS[level] + "<br>" +
+      "<strong>Territory:</strong> " + terrKey +
+      '<span class="tx-hash">Tx: ' + receipt.hash + '</span>'
+    );
+    loadJudges();
+  } catch (e) {
+    showResult("fail", "Registration Failed",
+      "<strong>Reason:</strong> " + (e.reason || e.message)
+    );
+  }
+}
+
+async function revokeJudge() {
+  const resultEl = document.getElementById("reg-result");
+  resultEl.style.display = "none";
+  try {
+    const addr = document.getElementById("reg-address").value.trim();
+    const adminSigner = signers[0];
+    const tx = await contract.connect(adminSigner).revokeJudge(addr);
+    await tx.wait();
+    showResult("success", "Judge Revoked",
+      "<strong>Address:</strong> " + addr + "<br>" +
+      "Authorization has been revoked. The judge can no longer submit freeze orders."
+    );
+    loadJudges();
+  } catch (e) {
+    showResult("fail", "Revocation Failed",
+      "<strong>Reason:</strong> " + (e.reason || e.message)
+    );
+  }
+}
+
+function showResult(type, title, bodyHtml) {
+  const el = document.getElementById("reg-result");
+  el.className = "result-card " + (type === "success" ? "success" : "fail");
+  el.style.display = "block";
+  document.getElementById("reg-result-icon").innerHTML = '<span class="result-dot"></span>';
+  document.getElementById("reg-result-title").textContent = title;
+  document.getElementById("reg-result-body").innerHTML    = bodyHtml;
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+init();
+</script>
+</body>
+</html>
