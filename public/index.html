@@ -198,6 +198,7 @@ input, select {
   background: #fff; color: #0F172A;
 }
 input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.demo-token-hint { margin-top: 8px; font-size: 16px; color: #64748B; }
 
 .btn-primary {
   display: inline-flex; align-items: center;
@@ -378,7 +379,8 @@ footer {
     </div>
     <div class="card">
       <label for="pub-tokenid">Property Token ID</label>
-      <input type="text" id="pub-tokenid" placeholder="Enter token ID — e.g. 1, 2, or 3" onkeydown="if(event.key==='Enter') checkStatus()">
+      <input type="text" id="pub-tokenid" inputmode="numeric" aria-describedby="demo-token-hint" placeholder="Enter token ID — e.g. 1, 2, or 3" onkeydown="if(event.key==='Enter') checkStatus()">
+      <p class="demo-token-hint" id="demo-token-hint">Demo tokens: 1 (Vellore), 2 (Chennai), 3 (Kadapa).</p>
       <button class="btn-primary" onclick="checkStatus()">Check Status</button>
 
       <div class="status-result" id="status-result">
