@@ -248,6 +248,11 @@ input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37
 .history-meta { font-size: 20px; color: #475569; line-height: 1.6; }
 .history-meta strong { color: #0F172A; font-weight: 600; font-size: 20px; }
 .history-meta .history-sub { font-size: 16px; color: #94A3B8; }
+.history-entry { border-left: 3px solid #cbd5e1; padding-left: 14px; margin-left: 3px; }
+.signed-by { margin-top: 5px; font-size: 15px; line-height: 1.6; }
+.check-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; background:#cbd5e1; }
+.check-dot.pass { background:#16a34a; }
+.verify-link { display:inline-block; margin-top:16px; font-size:17px; font-weight:700; color:#1d4ed8; }
 
 /* ── Footer ── */
 footer {
@@ -323,7 +328,7 @@ footer {
         <div class="stat-label">Registered Judges</div>
       </div>
       <div class="stat-card">
-        <div class="stat-number">03</div>
+        <div class="stat-number" id="stat-properties">—</div>
         <div class="stat-label">Properties Tracked</div>
       </div>
       <div class="stat-card">
@@ -331,7 +336,7 @@ footer {
         <div class="stat-label">Orders Processed</div>
       </div>
       <div class="stat-card">
-        <div class="stat-number">11</div>
+        <div class="stat-number" id="stat-checks">—</div>
         <div class="stat-label">Verification Checks</div>
       </div>
     </div>
@@ -379,13 +384,14 @@ footer {
     </div>
     <div class="card">
       <label for="pub-tokenid">Property Token ID</label>
-      <input type="text" id="pub-tokenid" inputmode="numeric" aria-describedby="demo-token-hint" placeholder="Enter token ID — e.g. 1, 2, or 3" onkeydown="if(event.key==='Enter') checkStatus()">
-      <p class="demo-token-hint" id="demo-token-hint">Demo tokens: 1 (Vellore), 2 (Chennai), 3 (Kadapa).</p>
+      <input type="text" id="pub-tokenid" inputmode="numeric" aria-describedby="demo-token-hint" placeholder="Enter token ID — e.g. 4, 5, or 6" onkeydown="if(event.key==='Enter') checkStatus()">
+      <p class="demo-token-hint" id="demo-token-hint">Demo tokens: 4 (Vellore), 5 (Vellore, high value), 6 (Kadapa).</p>
       <button class="btn-primary" onclick="checkStatus()">Check Status</button>
 
       <div class="status-result" id="status-result">
         <div class="status-badge" id="status-badge"><span class="dot"></span><span id="status-text"></span></div>
         <div class="status-details" id="status-details"></div>
+        <a class="verify-link" href="verify.html">Verify independently →</a>
       </div>
 
       <div class="history-section" id="pub-history">
@@ -406,167 +412,102 @@ footer {
 
 <script>
 const ABI = [
-  "function admin() view returns (address)",
-  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
-  "function judgeNonce(address) view returns (uint256)",
+  "function registry(address) view returns (string courtName,uint256 validFrom,uint256 validUntil,bool active,uint8 courtLevel,bytes32 territoryCode,uint8 role)",
   "function frozen(uint256) view returns (bool)",
   "function frozenBy(uint256) view returns (string)",
-  "function usedOrders(bytes32) view returns (bool)",
   "function propertyTerritory(uint256) view returns (bytes32)",
-  "function parentTerritory(bytes32) view returns (bytes32)",
   "function territoryName(bytes32) view returns (string)",
   "function parcelDeclaredValue(uint256) view returns (uint256)",
-  "function courtLevelMaxValue(uint8) view returns (uint256)",
-  "function quorumThreshold() view returns (uint256)",
-  "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
-  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
-  "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
-  "function setTerritory(bytes32 code, string name, bytes32 parent)",
-  "function registerProperty(uint256 tokenId, bytes32 territory, uint256 declaredValue)",
-  "function setParcelDeclaredValue(uint256 tokenId, uint256 value)",
-  "function setCourtLevelMaxValue(uint8 courtLevel, uint256 maxValue)",
-  "function setQuorumThreshold(uint256 threshold)",
-  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory, uint8 role)",
-  "function revokeJudge(address signer)",
-  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory)",
-  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
-  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
-  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
+  "function getFreezeHistoryLength(uint256) view returns (uint256)",
+  "function getFreezeHistoryEntry(uint256,uint256) view returns (uint256 timestamp,string caseNumber,address signer,bool isFreezeAction,uint256 nonce,uint256 checksBitmask)",
+  "function getFreezeHistorySigners(uint256,uint256) view returns (address[] signers,uint8[] roles)"
 ];
-
-let provider, contract, config;
-
+const ROLE = {1:"Judge",2:"Clerk",3:"Registrar"};
+const safe = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const formatDate = seconds => new Date(Number(seconds)*1000).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+let provider, contract, config, checks;
 async function init() {
-  const dot  = document.getElementById("navDot");
-  const text = document.getElementById("navStatusText");
+  const dot=document.getElementById("navDot"), text=document.getElementById("navStatusText");
   try {
-    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-    await provider.getNetwork();
-    const resp = await fetch("config.json");
-    config = await resp.json();
-    contract = new ethers.Contract(config.contractAddress, ABI, provider);
-
+    provider=new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const [network, conf, catalog]=await Promise.all([provider.getNetwork(),fetch("config.json"),fetch("checks.json")]);
+    if(!conf.ok || !catalog.ok) throw Error("Could not load public chain configuration");
+    config=await conf.json(); checks=await catalog.json();
+    if(await provider.getCode(config.contractAddress)==="0x") throw Error("Registry contract is not on this chain");
+    contract=new ethers.Contract(config.contractAddress,ABI,provider);
     dot.classList.remove("disconnected");
-    text.textContent = "Connected";
+    text.textContent="Connected · chain "+network.chainId;
     document.getElementById("navStatus").classList.add("connected");
-
+    document.getElementById("stat-checks").textContent=String(checks.freezeCheckCount).padStart(2,"0");
     loadStats();
-  } catch (e) {
-    dot.classList.add("disconnected");
-    text.textContent = "Not connected";
-    console.error(e);
-  }
+    const token=new URLSearchParams(location.search).get("token");
+    if(token){document.getElementById("pub-tokenid").value=token;checkStatus()}
+  }catch(e){dot.classList.add("disconnected");text.textContent="Chain unavailable";console.error(e)}
 }
-
-async function loadStats() {
-  try {
-    let judgeCount = 0;
-    for (const addr of [config.judgeAddress, config.outsideJudgeAddress]) {
-      if (!addr) continue;
-      try { const info = await contract.registry(addr); if (info.active) judgeCount++; } catch(_) {}
+async function loadStats(){
+  try{
+    const addresses=[config.judgeAddress,config.outsideJudgeAddress].filter(Boolean);
+    const keys=await Promise.all(addresses.map(a=>contract.registry(a)));
+    document.getElementById("stat-judges").textContent=String(keys.filter(k=>k.active&&Number(k.role)===1).length).padStart(2,"0");
+    let parcels=0,orders=0;
+    for(let id=1;id<=6;id++){
+      const [territory,count]=await Promise.all([contract.propertyTerritory(id),contract.getFreezeHistoryLength(id)]);
+      if(territory!==ethers.ZeroHash)parcels++;
+      orders+=Number(count);
     }
-    if (judgeCount > 0) {
-      document.getElementById("stat-judges").textContent = String(judgeCount).padStart(2, "0");
-    }
-
-    let total = 0;
-    for (let t = 1; t <= 3; t++) {
-      try { total += Number(await contract.getFreezeHistoryLength(t)); } catch(_) {}
-    }
-    document.getElementById("stat-orders").textContent = total === 0 ? "—" : String(total).padStart(2, "0");
-  } catch (e) { /* silent */ }
+    document.getElementById("stat-properties").textContent=String(parcels).padStart(2,"0");
+    document.getElementById("stat-orders").textContent=String(orders).padStart(2,"0");
+  }catch(e){console.error(e)}
 }
-
-async function checkStatus() {
-  const tokenId = document.getElementById("pub-tokenid").value.trim();
-  if (!tokenId) return;
-
-  const resultEl   = document.getElementById("status-result");
-  const badgeEl    = document.getElementById("status-badge");
-  const statusText = document.getElementById("status-text");
-  const detailsEl  = document.getElementById("status-details");
-  const historySection = document.getElementById("pub-history");
-  const entriesEl  = document.getElementById("pub-history-entries");
-
-  resultEl.style.display = "none";
-  historySection.style.display = "none";
-
-  try {
-    const [isFrozen, caseNum, terrCode] = await Promise.all([
-      contract.frozen(tokenId),
-      contract.frozenBy(tokenId),
-      contract.propertyTerritory(tokenId)
+async function checkStatus(){
+  const id=document.getElementById("pub-tokenid").value.trim();
+  const result=document.getElementById("status-result"),badge=document.getElementById("status-badge");
+  const label=document.getElementById("status-text"),details=document.getElementById("status-details");
+  const history=document.getElementById("pub-history"),entries=document.getElementById("pub-history-entries");
+  result.style.display="block";history.style.display="none";details.textContent="Reading the blockchain…";
+  if(!/^\d+$/.test(id)){label.textContent="Invalid token";details.textContent="Enter a non-negative numeric token ID.";return}
+  if(!contract){label.textContent="Chain unavailable";details.textContent="Start the local Besu chain, then reload this page.";return}
+  try{
+    const [frozen,caseNumber,territory,value,length]=await Promise.all([
+      contract.frozen(id),contract.frozenBy(id),contract.propertyTerritory(id),
+      contract.parcelDeclaredValue(id),contract.getFreezeHistoryLength(id)
     ]);
-    const terrName = await contract.territoryName(terrCode);
-
-    resultEl.style.display = "block";
-    if (isFrozen) {
-      badgeEl.className = "status-badge frozen";
-      statusText.textContent = "FROZEN";
-      detailsEl.innerHTML =
-        "<strong>Token:</strong> #" + tokenId + "<br>" +
-        "<strong>Status:</strong> Property is currently frozen by court order<br>" +
-        "<strong>Court Order:</strong> " + caseNum + "<br>" +
-        "<strong>Territory:</strong> " + terrName;
-    } else {
-      badgeEl.className = "status-badge not-frozen";
-      statusText.textContent = "NOT FROZEN";
-      detailsEl.innerHTML =
-        "<strong>Token:</strong> #" + tokenId + "<br>" +
-        "<strong>Status:</strong> No active freeze order on this property<br>" +
-        "<strong>Territory:</strong> " + terrName;
+    if(territory===ethers.ZeroHash)throw Error("This token is not a registered parcel");
+    const territoryName=await contract.territoryName(territory);
+    badge.className="status-badge "+(frozen?"frozen":"not-frozen");
+    label.textContent=frozen?"FROZEN":"NOT FROZEN";
+    const count=Number(length);
+    let latest=null,latestSigners=[];
+    if(count){
+      latest=await contract.getFreezeHistoryEntry(id,count-1);
+      latestSigners=(await contract.getFreezeHistorySigners(id,count-1));
     }
-
-    // Load full history
-    const len = await contract.getFreezeHistoryLength(tokenId);
-    const count = Number(len);
-    historySection.style.display = "block";
-    entriesEl.innerHTML = "";
-
-    if (count === 0) {
-      entriesEl.innerHTML = '<p style="font-size:13px; color:#94A3B8; padding:12px 0;">No history for token #' + tokenId + '.</p>';
-      return;
+    const statusLines=[
+      "<strong>Parcel:</strong> Token #"+safe(id),
+      "<strong>Territory:</strong> "+safe(territoryName||territory),
+      "<strong>Declared value:</strong> ₹"+safe(value.toLocaleString("en-IN")),
+      "<strong>Current status:</strong> "+(frozen?"Frozen by court order":"No active freeze order")
+    ];
+    if(frozen&&latest){
+      statusLines.push("<strong>Case:</strong> "+safe(caseNumber));
+      statusLines.push("<strong>Order date:</strong> "+safe(formatDate(latest.timestamp)));
+      statusLines.push("<strong>Signed by:</strong> "+latestSigners.signers.map((a,i)=>safe(ROLE[Number(latestSigners.roles[i])]||"Unknown")+" "+safe(a)).join("<br>"));
     }
-
-    for (let i = count - 1; i >= 0; i--) {
-      const entry = await contract.getFreezeHistoryEntry(tokenId, i);
-      const ts = new Date(Number(entry.timestamp) * 1000).toLocaleString("en-IN", { dateStyle:"medium", timeStyle:"short" });
-      const isFreeze = entry.isFreezeAction;
-      const bitmask  = Number(entry.checksBitmask);
-      // Render check bitmask (Step 4: on-chain verification record)
-      const CHECK_NAMES = [
-        "expiry","replay","recover","no-dupe","registry","validity",
-        "jurisdiction","judge-quorum","cosig-quorum","nonce","pecuniary","frozen-state"
-      ];
-      const checkDots = CHECK_NAMES.map((n, idx) => {
-        const pass = (bitmask >> idx) & 1;
-        return '<span title="' + n + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
-          (pass ? '#16A34A' : '#CBD5E1') + ';margin-right:2px;"></span>';
-      }).join('');
-      const div = document.createElement("div");
-      div.className = "history-entry";
-      div.innerHTML =
-        '<span class="history-badge ' + (isFreeze ? 'freeze' : 'unfreeze') + '">' + (isFreeze ? 'FREEZE' : 'UNFREEZE') + '</span>' +
-        '<div class="history-meta">' +
-          '<strong>' + entry.caseNumber + '</strong><br>' +
-          '<span class="history-sub">' + ts + ' &nbsp;&middot;&nbsp; Nonce ' + entry.nonce.toString() + ' &nbsp;&middot;&nbsp; ' + entry.signer.slice(0,10) + '...' + entry.signer.slice(-6) + '</span><br>' +
-          '<span class="history-sub" title="On-chain checks bitmask (Step 4)">' + checkDots + ' checks bitmask: 0x' + bitmask.toString(16) + '</span>' +
-        '</div>';
-      entriesEl.appendChild(div);
+    details.innerHTML=statusLines.join("<br>");
+    history.style.display="block";entries.textContent="";
+    if(!count){entries.textContent="No freeze or unfreeze orders recorded for this parcel.";return}
+    for(let i=count-1;i>=0;i--){
+      const [entry,signers]=await Promise.all([contract.getFreezeHistoryEntry(id,i),contract.getFreezeHistorySigners(id,i)]);
+      const action=entry.isFreezeAction?"freeze":"unfreeze";
+      const applicable=checks.checks.filter(ch=>ch.actions.includes(action));
+      const dots=applicable.map(ch=>'<span class="check-dot '+((entry.checksBitmask & (1n<<BigInt(ch.bit)))?"pass":"")+'" title="'+safe(ch.name)+' (bit '+ch.bit+')" aria-label="'+safe(ch.name)+'"></span>').join("");
+      const signedBy=signers.signers.map((a,j)=>safe(ROLE[Number(signers.roles[j])]||"Unknown")+" "+safe(a)).join("<br>");
+      const div=document.createElement("div");div.className="history-entry";
+      div.innerHTML='<span class="history-badge '+action+'">'+action.toUpperCase()+'</span><div class="history-meta"><strong>'+safe(entry.caseNumber)+'</strong><br><span class="history-sub">'+safe(formatDate(entry.timestamp))+' · Nonce '+safe(entry.nonce)+' · bitmask 0x'+entry.checksBitmask.toString(16)+'</span><div class="signed-by"><strong>Signed by</strong><br>'+signedBy+'</div><div title="Stored acceptance checks">'+dots+'</div></div>';
+      entries.appendChild(div);
     }
-
-  } catch (e) {
-    resultEl.style.display = "block";
-    badgeEl.className = "status-badge";
-    badgeEl.style.background = "#FEF3C7";
-    badgeEl.style.color = "#92400E";
-    statusText.textContent = "Error";
-    detailsEl.textContent = e.message;
-  }
+  }catch(e){badge.className="status-badge";label.textContent="Lookup failed";details.textContent=e.shortMessage||e.message}
 }
-
 init();
 </script>
 </body>
