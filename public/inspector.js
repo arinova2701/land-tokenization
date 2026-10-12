@@ -70,7 +70,7 @@
       } catch (e) { error = e.shortMessage || e.message; }
       return { supplied: item.signer, claimedRole: item.role, recovered, key, territory, maxValue, nonce, error };
     }));
-    const accepted = context.status === "accepted" || Boolean(context.checksBitmask);
+    const accepted = context.status === "accepted";
     let bitmask = accepted ? BigInt(context.checksBitmask || 0) :
       await c.getOrderChecks(order.tokenId, d.hash, order.orderExpiry, order.nonce, signatures.map(s => s.signature));
     if (accepted && !bitmask) {
