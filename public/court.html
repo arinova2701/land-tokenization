@@ -7,6 +7,8 @@
 <link rel="icon" href="Logo-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
 <script src="wallet.js"></script>
+<script src="inspector.js"></script>
+<link rel="stylesheet" href="inspector.css">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -263,6 +265,61 @@ footer {
   .btn-row { flex-direction: column; }
   .btn { width: 100%; justify-content: center; }
 }
+
+/* ── Guided flow (Sprint A2) ── */
+.step-card { padding: 28px 0; border-bottom: 1px solid #E2E8F0; }
+.step-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #0B1736; }
+.step-num {
+  width: 34px; height: 34px; border-radius: 50%; background: #0B1736; color: #fff; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;
+  font-family: 'Aileron', system-ui, sans-serif;
+}
+.step-title { font-size: 23px; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 0.06em; font-family: 'Aileron', system-ui, sans-serif; }
+.hint { font-size: 16px; color: #64748B; line-height: 1.55; }
+.notice { border-radius: 8px; padding: 12px 16px; font-size: 16px; line-height: 1.5; margin-top: 12px; border: 1px solid; }
+.notice.info { background: #EFF6FF; border-color: #BFDBFE; color: #1E40AF; }
+.notice.warn { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
+.notice.error { background: #FEF2F2; border-color: #FCA5A5; color: #B91C1C; }
+.notice.ok { background: #F0FDF4; border-color: #86EFAC; color: #15803D; }
+
+.summary-card { margin-top: 16px; background: #F8FAFC; border: 1px solid #CBD5E1; border-left: 4px solid #0B1736; border-radius: 8px; padding: 16px 20px; }
+.summary-text { font-size: 21px; color: #0F172A; line-height: 1.5; font-weight: 500; }
+.summary-why { font-size: 15px; color: #64748B; margin-top: 10px; line-height: 1.5; }
+
+.slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
+.slot { border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; background: #fff; min-width: 0; }
+.slot.signed { border-color: #86EFAC; background: #F0FDF4; }
+.slot-role { font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #475569; }
+.slot-state { font-size: 17px; font-weight: 600; margin: 6px 0 4px; color: #94A3B8; }
+.slot.signed .slot-state { color: #15803D; }
+.slot-meta { font-family: monospace; font-size: 13px; color: #64748B; word-break: break-all; line-height: 1.5; }
+.slot .btn { margin-top: 10px; padding: 8px 16px; font-size: 16px; width: 100%; justify-content: center; }
+.sig-count { margin-top: 12px; font-size: 18px; font-weight: 700; color: #0F172A; }
+
+.handover { margin-top: 18px; padding-top: 16px; border-top: 1px solid #F1F5F9; }
+.handover .btn { padding: 9px 20px; font-size: 17px; }
+.panel { margin-top: 12px; padding: 14px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; display: none; }
+.panel.open { display: block; }
+
+.check-row { display: flex; gap: 10px; align-items: baseline; font-size: 17px; padding: 5px 0; border-bottom: 1px solid #F1F5F9; }
+.check-row:last-child { border-bottom: none; }
+.check-badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; flex-shrink: 0; letter-spacing: .04em; }
+.check-badge.pass { background: #DCFCE7; color: #15803D; }
+.check-badge.fail { background: #FEE2E2; color: #B91C1C; }
+.check-badge.wait { background: #F1F5F9; color: #64748B; }
+.check-desc { font-size: 14px; color: #94A3B8; display: block; }
+
+.hood-bar { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
+.switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .track { position: absolute; inset: 0; background: #CBD5E1; border-radius: 26px; cursor: pointer; transition: .15s; }
+.switch .track::after { content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
+.switch input:checked + .track { background: #2563EB; }
+.switch input:checked + .track::after { transform: translateX(20px); }
+.switch input:focus-visible + .track { outline: 3px solid rgba(37,99,235,.35); }
+#inspector-root { display: none; }
+#inspector-root.open { display: block; }
+@media (max-width: 640px) { .slots { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -283,158 +340,137 @@ footer {
   </div>
 </nav>
 
-<!-- ── Page Watermark ── -->
 <img src="Logo-icon.png" alt="" class="page-watermark" aria-hidden="true">
-
-<!-- ── Connection Bar ── -->
 <div class="conn-bar" id="connBar">Connecting to local chain...</div>
 
-<!-- ── Portal Banner ── -->
 <div class="portal-banner">
   <div class="banner-title">Court Officer Portal</div>
-  <div class="banner-sub">Submit authenticated freeze and unfreeze orders — multi-signer export/import flow</div>
+  <div class="banner-sub">Create an order, collect three signatures, submit it to the chain</div>
 </div>
 
-<!-- ── Page Content ── -->
 <div class="page-content">
 
   <!-- Shared session header (role badge, address, sign out) — rendered by NyayaWallet.mountHeader -->
   <div id="session-header"></div>
-  <p style="font-size:15px;color:#94A3B8;margin:-4px 0 16px;">
-    Use a different Chrome profile per role. The judge signs first, then exports the order JSON for the co-signer to import.
-  </p>
 
-  <!-- Order Form Card -->
-  <div class="card">
-    <div class="card-title">Build Order</div>
+  <!-- ── Step 1: Create order (judge) ── -->
+  <section class="step-card" id="step1">
+    <div class="step-head"><span class="step-num">1</span><span class="step-title">Create order</span></div>
 
-    <div class="form-group">
-      <label for="court-tokenid">Property Token</label>
-      <select id="court-tokenid" onchange="updatePropertyDisplay()">
-        <option value="1">Token 1 — Vellore</option>
-        <option value="2">Token 2 — Chennai</option>
-        <option value="3">Token 3 — Kadapa (AP)</option>
-      </select>
-      <div class="property-info-note" id="property-info"></div>
+    <div id="step1-notjudge" class="notice info" style="display:none;margin-top:0;">
+      Only a judge creates an order. If you are a clerk or registrar, import the order your judge exported in step 2.
     </div>
 
-    <div class="form-group">
-      <label for="court-case">Case Number</label>
-      <input type="text" id="court-case" placeholder="e.g. I.A.No.2 of 2024 in O.S.No.5111 of 2024">
+    <div id="step1-form">
+      <div class="form-group">
+        <label for="court-tokenid">Property <span class="label-note">from the on-chain register</span></label>
+        <select id="court-tokenid"><option value="">Loading parcels…</option></select>
+        <div class="property-info-note" id="property-info"></div>
+      </div>
+      <div class="form-group">
+        <label for="court-action">Action</label>
+        <select id="court-action">
+          <option value="freeze">Freeze</option>
+          <option value="unfreeze">Unfreeze</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="court-case">Case number</label>
+        <input type="text" id="court-case" maxlength="120" placeholder="e.g. I.A.No.2 of 2024 in O.S.No.5111 of 2024">
+      </div>
+      <div class="form-group">
+        <label for="court-expiry">Order valid for <span class="label-note">minutes from now</span></label>
+        <input type="number" id="court-expiry" value="60" min="1" max="1440">
+      </div>
+      <div class="form-group">
+        <label for="court-nonce">Nonce <span class="label-note">filled in automatically from the chain</span></label>
+        <input type="text" id="court-nonce" readonly value="">
+      </div>
+      <div class="btn-row"><button class="btn btn-primary" id="btn-review" disabled>Review order</button></div>
+      <div id="step1-msg"></div>
+
+      <div class="summary-card" id="summary-card" style="display:none;">
+        <div class="summary-text" id="summary-text"></div>
+        <div class="summary-why">MetaMask will show a long hash instead of these details. That is expected: you sign the order digest, a fingerprint computed from exactly the fields above, so the signature is tied to this order and nothing else.</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-sign-draft">Sign with wallet</button>
+          <button class="btn btn-outline" id="btn-edit-draft">Edit</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Step 2: Collect signatures ── -->
+  <section class="step-card" id="step2">
+    <div class="step-head"><span class="step-num">2</span><span class="step-title">Collect signatures</span></div>
+
+    <div id="step2-empty" class="hint">No order loaded yet. A judge creates one in step 1; a clerk or registrar imports the exported order below.</div>
+
+    <div id="step2-order" style="display:none;">
+      <div class="summary-card" style="margin-top:0;margin-bottom:16px;"><div class="summary-text" id="order-summary"></div></div>
+      <div class="slots" id="slots"></div>
+      <div class="sig-count" id="sig-count"></div>
+      <div id="step2-msg"></div>
     </div>
 
-    <div class="form-group">
-      <label for="court-expiry">Order Valid For <span class="label-note">(minutes from now)</span></label>
-      <input type="text" id="court-expiry" value="60">
-    </div>
+    <div class="handover">
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn btn-outline" id="btn-export" disabled>Export order</button>
+        <button class="btn btn-outline" id="btn-import-toggle">Import order</button>
+      </div>
 
-    <div class="form-group">
-      <label for="court-nonce">Nonce <span class="label-note">auto-filled — next expected for connected judge</span></label>
-      <input type="text" id="court-nonce" readonly value="0">
-    </div>
+      <div class="panel" id="export-panel">
+        <p class="hint" style="margin-bottom:10px;">Send this to the next signer. They import it in their own browser profile.</p>
+        <textarea id="export-json" rows="8" readonly aria-label="Exported order JSON"></textarea>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn btn-outline" id="btn-copy">Copy</button>
+          <button class="btn btn-outline" id="btn-download">Download file</button>
+        </div>
+      </div>
 
-    <div class="form-group">
-      <label>Action</label>
-      <select id="court-action">
-        <option value="freeze">Freeze</option>
-        <option value="unfreeze">Unfreeze</option>
-      </select>
+      <div class="panel" id="import-panel">
+        <p class="hint" style="margin-bottom:10px;">Paste an exported order, or choose its .json file. It is fully checked before anything is loaded.</p>
+        <textarea id="import-json" rows="8" placeholder="Paste exported order JSON here…" aria-label="Order JSON to import"></textarea>
+        <input type="file" id="import-file" accept=".json,application/json" style="margin-top:10px;font-size:15px;">
+        <div class="btn-row" style="margin-top:10px;"><button class="btn btn-primary" id="btn-import">Validate &amp; import</button></div>
+        <div id="import-msg"></div>
+      </div>
     </div>
+  </section>
 
-    <!-- Signature Status -->
-    <div class="sig-status-box" id="sig-status-box" style="display:none;">
-      <div class="sig-status-title">Signature Status</div>
-      <div id="sig-list"></div>
-      <div class="sig-threshold" id="sig-threshold"></div>
+  <!-- ── Step 3: Review and submit ── -->
+  <section class="step-card" id="step3" style="border-bottom:none;">
+    <div class="step-head"><span class="step-num">3</span><span class="step-title">Review &amp; submit</span></div>
+    <div id="step3-empty" class="hint">Available once all three signatures are collected.</div>
+    <div id="step3-body" style="display:none;">
+      <p class="hint" style="margin-bottom:10px;">The contract's own pre-flight (<code>getOrderChecks</code>) for this <span id="checks-action"></span> order:</p>
+      <div id="checks-list"></div>
+      <div id="step3-msg"></div>
+      <div class="btn-row">
+        <button class="btn btn-green" id="btn-submit" disabled>Submit to chain</button>
+        <button class="btn btn-outline" id="btn-recheck">Re-run checks</button>
+      </div>
+      <div class="result-card" id="court-result" style="margin-top:20px;">
+        <div class="result-header"><span class="result-dot"></span><span class="result-header-title" id="result-title"></span></div>
+        <div class="result-body" id="result-body"></div>
+      </div>
     </div>
+  </section>
 
-    <div class="btn-row">
-      <button class="btn btn-primary" id="btn-sign" onclick="signOrder()" disabled>
-        Sign Order
-      </button>
-    </div>
+  <div class="btn-row" style="margin-top:8px;"><button class="btn btn-outline" id="btn-reset">Start over</button></div>
+
+  <!-- ── Under the hood ── -->
+  <div class="hood-bar">
+    <label class="switch" for="hood-toggle" style="margin:0;">
+      <input type="checkbox" id="hood-toggle" role="switch">
+      <span class="track"></span>
+    </label>
+    <label for="hood-toggle" style="margin:0;font-size:18px;">Under the hood <span class="label-note">show the digest, signatures and every check</span></label>
   </div>
-
-  <!-- Export Card -->
-  <div class="card" id="export-card" style="display:none;">
-    <div class="card-title">Export Order</div>
-    <p style="font-size:16px;color:#64748B;margin-bottom:12px;">
-      Copy this JSON and send it to the co-signer. They will import it on their court portal in their own browser profile.
-    </p>
-    <div class="export-box">
-      <textarea id="export-json" rows="6" readonly></textarea>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-outline" onclick="copyExport()">Copy to Clipboard</button>
-    </div>
-  </div>
-
-  <!-- Import Card -->
-  <div class="card">
-    <div class="card-title">Import Order</div>
-    <p style="font-size:16px;color:#64748B;margin-bottom:12px;">
-      If you are the co-signer, paste the order JSON exported by the judge here.
-    </p>
-    <div class="import-box">
-      <textarea id="import-json" rows="6" placeholder="Paste exported order JSON here..."></textarea>
-    </div>
-    <div id="import-validation" style="display:none;margin-top:8px;font-size:15px;"></div>
-    <div class="btn-row">
-      <button class="btn btn-outline" onclick="importOrder()">Import &amp; Validate</button>
-    </div>
-  </div>
-
-  <!-- Submit Card -->
-  <div class="card" id="submit-card" style="display:none;">
-    <div class="card-title">Submit to Chain</div>
-
-    <!-- Pre-check results -->
-    <div class="precheck-box" id="precheck-box">
-      <div class="precheck-title">Pre-submission Check — getOrderChecks (11 checks for freeze, 12 for unfreeze)</div>
-      <div id="precheck-rows"></div>
-    </div>
-
-    <div class="sig-status-box" id="submit-sig-status" style="margin-top:14px;">
-      <div class="sig-status-title">Ready to Submit</div>
-      <div id="submit-sig-list"></div>
-    </div>
-
-    <!-- Verification Steps -->
-    <div class="steps-card" id="steps-card">
-      <div class="card-title" style="margin-top:20px;">Verification Progress</div>
-      <div class="step-row pending" id="step-precheck">
-        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">1. Pre-validate via getOrderChecks — 11 checks (freeze) / 12 checks (unfreeze)</div>
-      </div>
-      <div class="step-row pending" id="step-submit">
-        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">2. Submit to contract</div>
-      </div>
-      <div class="step-row pending" id="step-confirm">
-        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">3. Waiting for block confirmation (~2s on Besu)...</div>
-      </div>
-      <div class="step-row pending" id="step-result">
-        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">4. Result</div>
-      </div>
-    </div>
-
-    <div class="result-card" id="court-result" style="margin-top:20px;">
-      <div class="result-header">
-        <span class="result-dot"></span>
-        <span class="result-header-title" id="result-title"></span>
-      </div>
-      <div class="result-body" id="result-body"></div>
-    </div>
-
-    <div class="btn-row" style="margin-top:20px;">
-      <button class="btn btn-green" id="btn-submit" onclick="submitOrder()" disabled>
-        Submit Order
-      </button>
-      <button class="btn btn-outline" onclick="resetFlow()">Start Over</button>
-    </div>
-  </div>
+  <div id="inspector-root"></div>
 
 </div><!-- /page-content -->
 
-<!-- ── Footer ── -->
 <footer>
   <div class="footer-brand">NyayaChain</div>
   <div class="footer-sub">Judicially Authenticated Property Freeze Protocol</div>
@@ -442,482 +478,580 @@ footer {
 
 <script>
 const ABI = [
-  "function admin() view returns (address)",
   "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
   "function judgeNonce(address) view returns (uint256)",
   "function frozen(uint256) view returns (bool)",
-  "function frozenBy(uint256) view returns (string)",
-  "function usedOrders(bytes32) view returns (bool)",
   "function propertyTerritory(uint256) view returns (bytes32)",
-  "function parentTerritory(bytes32) view returns (bytes32)",
   "function territoryName(bytes32) view returns (string)",
   "function parcelDeclaredValue(uint256) view returns (uint256)",
-  "function courtLevelMaxValue(uint8) view returns (uint256)",
-  "function quorumThreshold() view returns (uint256)",
   "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
   "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
+  "function getFreezeHistorySigners(uint256 tokenId, uint256 index) view returns (address[] signers, uint8[] roles)",
   "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
   "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)"
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
 ];
 
-const CHECK = {
-  EXPIRY: 0, REPLAY: 1, RECOVER: 2, NO_DUPE: 3,
-  REGISTRY: 4, VALIDITY: 5, JURISDICTION: 6,
-  QUORUM_JUDGE: 7, QUORUM_COSIG: 8, NONCE: 9, PECUNIARY: 10, FROZEN_STATE: 11
-};
-const CHECK_NAMES = [
-  "Order not expired", "No replay", "ECDSA recovery",
-  "No duplicate signers", "Signers in registry", "Keys within validity window",
-  "Territorial jurisdiction", "JUDGE present", "CLERK/REGISTRAR present",
-  "Nonce sequential", "Pecuniary limit", "Frozen state"
-];
+// Signing order of the three slots; also the order signatures are sent to the contract.
+const ROLES = ["JUDGE", "CLERK", "REGISTRAR"];
+const ROLE_ID = { JUDGE: 1, CLERK: 2, REGISTRAR: 3 };
+const ROLE_LABEL = { JUDGE: "Judge", CLERK: "Clerk", REGISTRAR: "Registrar" };
+const ID_ROLE = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
 
-const ROLE_NAMES = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
+const $ = (id) => document.getElementById(id);
+const shortAddr = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+const shortSig  = (s) => s.slice(0, 10) + "…" + s.slice(-6);
+const inr = (v) => "₹" + Number(v).toLocaleString("en-IN");
+const fmtTime = (unix) => new Date(unix * 1000).toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" });
 
-let readProvider, contract, config;
-let connectedSigner = null;    // MetaMask signer
-let connectedAddress = null;
-let connectedRole = 0;
-let quorumThreshold = 2;
+let readProvider, contract, config, checksCatalog;
+let connectedSigner = null, connectedAddress = null, connectedRole = null;  // role is a string or null
+let tokens = [];            // [{ id, territory, value, frozen }]
+let draft = null;           // order built in step 1, not yet signed
+let order = null;           // order being collected: fields + signatures + status
 
-// Current order being built
-let currentOrder = null;  // { tokenId, caseNumber, orderExpiry, nonce, action, orderHash, signatures: [{signer, role, sig}] }
+// ── Order basics ────────────────────────────────────────────────────────────
+
+// Digest recipe from docs/interfaces.md §1.4 (abi.encode, not packed).
+function hashOf(o) {
+  return ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+    ["uint256", "string", "uint256", "uint256"],
+    [o.tokenId, o.caseNumber, o.orderExpiry, o.nonce]
+  ));
+}
+
+function tokenInfo(id) { return tokens.find(t => t.id === Number(id)); }
+
+function plainSummary(o) {
+  const t = tokenInfo(o.tokenId);
+  const where = t ? ", " + t.territory : "";
+  return (o.action === "freeze" ? "Freeze" : "Unfreeze") + " Token " + o.tokenId + where +
+    ", case " + o.caseNumber + ", valid until " + fmtTime(o.orderExpiry) + ", nonce " + o.nonce;
+}
+
+function statusOf() {
+  if (!order) return null;
+  if (order.status === "submitted" || order.status === "accepted") return order.status;
+  return order.signatures.length >= ROLES.length ? "ready" : "collecting";
+}
+
+function slotFor(role) { return order && order.signatures.find(s => s.role === role); }
+
+// Fires on every order, signature or status change so the inspector can react (docs/interfaces.md §6).
+function orderContext() {
+  return {
+    order: {
+      tokenId: order.tokenId, action: order.action, caseNumber: order.caseNumber,
+      orderHash: order.orderHash, orderExpiry: order.orderExpiry, nonce: order.nonce
+    },
+    signatures: order.signatures.map(s => ({ signer: s.signer, role: s.role, signature: s.signature })),
+    status: order.status,
+    txHash: order.txHash || null,
+    checksBitmask: order.checksBitmask || 0
+  };
+}
+function emitOrder() {
+  if (!order) return;
+  order.status = statusOf();
+  document.dispatchEvent(new CustomEvent("nyaya:order-updated", { detail: orderContext() }));
+}
+document.addEventListener("nyaya:order-updated", (e) => {
+  if (typeof NyayaInspector === "undefined") return;
+  try {
+    Promise.resolve(NyayaInspector.setOrder(e.detail)).catch(err => console.warn("Inspector:", err));
+  } catch (err) { console.warn("Inspector:", err); }
+});
+
+function setMsg(id, kind, text) {
+  const el = $(id);
+  if (!text) { el.replaceChildren(); return; }
+  const div = document.createElement("div");
+  div.className = "notice " + kind;
+  div.textContent = text;
+  el.replaceChildren(div);
+}
+
+// ── Startup ─────────────────────────────────────────────────────────────────
 
 async function init() {
-  const connBar = document.getElementById("connBar");
+  const connBar = $("connBar");
   try {
     readProvider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
     const network = await readProvider.getNetwork();
-    const resp = await fetch("config.json");
-    config = await resp.json();
+    config = await fetch("config.json").then(r => r.json());
+    checksCatalog = await fetch("checks.json").then(r => r.json());
     contract = new ethers.Contract(config.contractAddress, ABI, readProvider);
-    quorumThreshold = Number(await contract.quorumThreshold());
 
-    const short = config.contractAddress.slice(0, 10) + "..." + config.contractAddress.slice(-6);
-    connBar.textContent = "Chain ID: " + network.chainId + " | Contract: " + short;
-    document.getElementById("navDot").classList.remove("disconnected");
-    document.getElementById("navStatusText").textContent = "Connected";
-    document.getElementById("navStatus").classList.add("connected");
+    connBar.textContent = "Chain ID: " + network.chainId + " | Contract: " +
+      config.contractAddress.slice(0, 10) + "..." + config.contractAddress.slice(-6);
+    $("navDot").classList.remove("disconnected");
+    $("navStatusText").textContent = "Connected";
+    $("navStatus").classList.add("connected");
 
-    updatePropertyDisplay();
+    await loadTokens();
   } catch (e) {
     connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
     connBar.className = "conn-bar error";
-    document.getElementById("navStatusText").textContent = "Not connected";
+    $("navStatusText").textContent = "Not connected";
     console.error(e);
   }
+
+  setupInspector();
 
   // Shared header + guard: no wallet, or a wallet with no on-chain role, goes to login.html.
   // REGISTRAR is allowed because the registrar co-signs orders here (login routes it to registrar.html first).
   NyayaWallet.mountHeader({
     container: "#session-header",
-    allowedRoles: ["JUDGE", "CLERK", "REGISTRAR"],
+    allowedRoles: ROLES,
     onSession: adoptSession
   });
+  renderAll();
 }
-
-const ROLE_IDS = { JUDGE: 1, CLERK: 2, REGISTRAR: 3 };
 
 // Called by the shared header whenever the (allowed) session is set or changes.
 async function adoptSession(session) {
   connectedAddress = session.address;
-  connectedRole = ROLE_IDS[session.role] || 0;
+  connectedRole = session.role;
   connectedSigner = await new ethers.BrowserProvider(window.ethereum).getSigner();
-
-  // Judges get their next nonce filled in automatically
-  if (connectedRole === 1 && contract) {
-    try {
-      const nonce = await contract.judgeNonce(session.address);
-      document.getElementById("court-nonce").value = nonce.toString();
-    } catch (_) { /* leave the field as is */ }
+  if (connectedRole === "JUDGE" && contract) {
+    try { $("court-nonce").value = (await contract.judgeNonce(connectedAddress)).toString(); } catch (_) {}
   }
-  updateWalletUI();
+  renderAll();
 }
 
-function updateWalletUI() {
-  // Only JUDGE can initiate; CLERK can co-sign via import
-  document.getElementById("btn-sign").disabled = connectedRole !== 1;
+// Parcels come from PropertyRegistered events; territory, value and frozen state are read live.
+async function loadTokens() {
+  const sel = $("court-tokenid");
+  const logs = await contract.queryFilter(contract.filters.PropertyRegistered(), 0, "latest");
+  const ids = [...new Set(logs.map(l => Number(l.args.tokenId)))].sort((a, b) => a - b);
+  tokens = [];
+  for (const id of ids) {
+    const [code, value, frozen] = await Promise.all([
+      contract.propertyTerritory(id), contract.parcelDeclaredValue(id), contract.frozen(id)
+    ]);
+    tokens.push({ id, territory: await contract.territoryName(code), value, frozen });
+  }
+  const prev = sel.value;
+  sel.replaceChildren();
+  if (!tokens.length) {
+    const o = document.createElement("option"); o.value = ""; o.textContent = "No parcels registered"; sel.appendChild(o);
+    return;
+  }
+  for (const t of tokens) {
+    const o = document.createElement("option");
+    o.value = String(t.id);
+    o.textContent = "Token " + t.id + " — " + t.territory + " · " + inr(t.value) + " · " + (t.frozen ? "FROZEN" : "not frozen");
+    sel.appendChild(o);
+  }
+  if (prev && tokenInfo(prev)) sel.value = prev;
+  showParcelNote();
 }
 
-async function updatePropertyDisplay() {
-  if (!contract) return;
-  const tokenId = document.getElementById("court-tokenid").value;
-  const infoEl  = document.getElementById("property-info");
+function showParcelNote() {
+  const t = tokenInfo($("court-tokenid").value), el = $("property-info");
+  if (!t) { el.style.display = "none"; return; }
+  el.style.display = "block";
+  el.className = "property-info-note " + (t.frozen ? "frozen-note" : "free-note");
+  el.textContent = t.territory + " · declared value " + inr(t.value) + " · " + (t.frozen ? "currently FROZEN" : "not frozen");
+}
+
+// ── Inspector hook ──────────────────────────────────────────────────────────
+
+function setupInspector() {
+  const root = $("inspector-root");
   try {
-    const terrCode = await contract.propertyTerritory(tokenId);
-    const terrName = await contract.territoryName(terrCode);
-    const isFrozen = await contract.frozen(tokenId);
-    infoEl.style.display = "block";
-    if (isFrozen) {
-      infoEl.className = "property-info-note frozen-note";
-      infoEl.textContent = "Territory: " + terrName + " \u00b7 Status: FROZEN";
-    } else {
-      infoEl.className = "property-info-note free-note";
-      infoEl.textContent = "Territory: " + terrName + " \u00b7 Status: not frozen";
+    if (typeof NyayaInspector !== "undefined" && window.ethereum) {
+      NyayaInspector.attach({ container: root, provider: new ethers.BrowserProvider(window.ethereum), config });
     }
-  } catch (e) { infoEl.style.display = "none"; }
-}
+  } catch (e) { console.warn("Inspector attach failed:", e); }
 
-// ── Sign Order (Judge) ──────────────────────────────────────────────────────
-
-async function signOrder() {
-  if (!connectedSigner || connectedRole !== 1) {
-    alert("Connect a wallet with JUDGE role to sign."); return;
-  }
-
-  const tokenId    = document.getElementById("court-tokenid").value;
-  const caseNumber = document.getElementById("court-case").value.trim();
-  const expiryMins = parseInt(document.getElementById("court-expiry").value.trim()) || 60;
-  const nonce      = BigInt(document.getElementById("court-nonce").value.trim() || "0");
-  const action     = document.getElementById("court-action").value;
-
-  if (!caseNumber) { alert("Enter a case number."); return; }
-
-  const block       = await readProvider.getBlock("latest");
-  const orderExpiry = block.timestamp + (expiryMins * 60);
-  const orderData   = ethers.solidityPacked(
-    ["string", "uint256", "uint256", "string", "uint256"],
-    [caseNumber, tokenId, orderExpiry, action, nonce]
-  );
-  const orderHash = ethers.keccak256(orderData);
-
-  const btn = document.getElementById("btn-sign");
-  btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Signing...";
-
-  let sig;
-  try {
-    sig = await NyayaWallet.signOrderHash(connectedSigner, orderHash);
-  } catch (e) {
-    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Sign Order";
-    alert("Signing failed: " + (e.message || e)); return;
-  }
-  btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Sign Order";
-
-  currentOrder = {
-    tokenId, caseNumber, orderExpiry, nonce: Number(nonce), action, orderHash,
-    signatures: [{ signer: connectedAddress, role: connectedRole, sig }]
+  const toggle = $("hood-toggle");
+  const apply = () => {
+    root.classList.toggle("open", toggle.checked);
+    const details = root.querySelector("details");
+    if (details && toggle.checked) details.open = true;
+    try { localStorage.setItem("nyaya:underTheHood", toggle.checked ? "1" : "0"); } catch (_) {}
   };
-
-  renderSigStatus();
-  renderExport();
-  document.getElementById("export-card").style.display = "block";
-  checkReadyToSubmit();
+  try { toggle.checked = localStorage.getItem("nyaya:underTheHood") === "1"; } catch (_) {}
+  toggle.addEventListener("change", apply);
+  apply();
 }
 
-// ── Import Order ────────────────────────────────────────────────────────────
+// ── Step 1: create (judge) ──────────────────────────────────────────────────
+
+async function reviewOrder() {
+  setMsg("step1-msg", "", "");
+  if (connectedRole !== "JUDGE") return;
+  const tokenId = Number($("court-tokenid").value);
+  const caseNumber = $("court-case").value.trim();
+  const mins = Number($("court-expiry").value);
+  const action = $("court-action").value;
+  if (!tokenInfo(tokenId)) { setMsg("step1-msg", "error", "Choose a property."); return; }
+  if (!caseNumber) { setMsg("step1-msg", "error", "Enter the case number."); return; }
+  if (!Number.isInteger(mins) || mins < 1 || mins > 1440) { setMsg("step1-msg", "error", "Validity must be between 1 and 1440 minutes."); return; }
+
+  try {
+    const [block, nonce] = await Promise.all([readProvider.getBlock("latest"), contract.judgeNonce(connectedAddress)]);
+    $("court-nonce").value = nonce.toString();
+    draft = { version: 1, tokenId, action, caseNumber, orderExpiry: block.timestamp + mins * 60, nonce: Number(nonce) };
+    draft.orderHash = hashOf(draft);
+  } catch (e) { setMsg("step1-msg", "error", "Could not read the chain: " + (e.shortMessage || e.message)); return; }
+
+  const t = tokenInfo(tokenId);
+  $("summary-text").textContent = plainSummary(draft);
+  $("summary-card").style.display = "block";
+  if (action === "freeze" && t.frozen) setMsg("step1-msg", "warn", "This parcel is already frozen. The chain will reject a second freeze.");
+  if (action === "unfreeze" && !t.frozen) setMsg("step1-msg", "warn", "This parcel is not frozen. The chain will reject an unfreeze.");
+}
+
+async function signDraft() {
+  if (!draft || connectedRole !== "JUDGE") return;
+  if (hashOf(draft) !== draft.orderHash) { setMsg("step1-msg", "error", "Order fields changed after review. Review the order again."); return; }
+  const btn = $("btn-sign-draft"); btn.disabled = true; btn.textContent = "Waiting for wallet…";
+  try {
+    const signature = await NyayaWallet.signOrderHash(connectedSigner, draft.orderHash);
+    order = { ...draft, signatures: [{ signer: connectedAddress, role: "JUDGE", signature }], status: "collecting", txHash: null, checksBitmask: 0 };
+    draft = null;
+    $("summary-card").style.display = "none";
+    setMsg("step1-msg", "", "");
+    emitOrder();
+    renderAll();
+  } catch (e) {
+    setMsg("step1-msg", "error", e && (e.code === 4001 || e.code === "ACTION_REJECTED") ? "Signing was cancelled in your wallet." : "Signing failed: " + (e.shortMessage || e.message));
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign with wallet";
+  }
+}
+
+// ── Step 2: signatures, export, import ──────────────────────────────────────
+
+async function coSign(role) {
+  if (!order || role !== connectedRole || slotFor(role) || statusOf() === "submitted" || statusOf() === "accepted") return;
+  if (hashOf(order) !== order.orderHash) { setMsg("step2-msg", "error", "This order's hash does not match its fields. Do not sign it."); return; }
+  setMsg("step2-msg", "", "");
+  try {
+    const signature = await NyayaWallet.signOrderHash(connectedSigner, order.orderHash);
+    order.signatures.push({ signer: connectedAddress, role, signature });
+    emitOrder();
+    renderAll();
+  } catch (e) {
+    setMsg("step2-msg", "error", e && (e.code === 4001 || e.code === "ACTION_REJECTED") ? "Signing was cancelled in your wallet." : "Signing failed: " + (e.shortMessage || e.message));
+  }
+}
+
+function exportJson() {
+  return JSON.stringify({
+    version: 1, tokenId: order.tokenId, action: order.action, caseNumber: order.caseNumber,
+    orderExpiry: order.orderExpiry, nonce: order.nonce, orderHash: order.orderHash,
+    signatures: order.signatures.map(s => ({ signer: s.signer, role: s.role, signature: s.signature }))
+  }, null, 2);
+}
+
+class ImportError extends Error {}
+
+// Checks an exported order completely before anything is loaded. Throws ImportError with a plain reason.
+async function validateImport(parsed) {
+  const fail = (m) => { throw new ImportError(m); };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) fail("This is not an order: expected a JSON object.");
+  if (parsed.version !== 1) fail("Unsupported order version.");
+  if (!Number.isInteger(parsed.tokenId) || parsed.tokenId < 0) fail("Order has an invalid tokenId.");
+  if (parsed.action !== "freeze" && parsed.action !== "unfreeze") fail("Order action must be freeze or unfreeze.");
+  if (typeof parsed.caseNumber !== "string" || !parsed.caseNumber.trim()) fail("Order has no case number.");
+  if (!Number.isInteger(parsed.orderExpiry) || parsed.orderExpiry <= 0) fail("Order has an invalid expiry.");
+  if (!Number.isInteger(parsed.nonce) || parsed.nonce < 0) fail("Order has an invalid nonce.");
+  if (typeof parsed.orderHash !== "string" || !ethers.isHexString(parsed.orderHash, 32)) fail("Order hash is missing or malformed.");
+  if (!Array.isArray(parsed.signatures) || parsed.signatures.length < 1 || parsed.signatures.length > ROLES.length) fail("Order must carry 1 to 3 signatures.");
+
+  // 1. The hash must be the digest of the fields.
+  const fields = { tokenId: parsed.tokenId, caseNumber: parsed.caseNumber, orderExpiry: parsed.orderExpiry, nonce: parsed.nonce };
+  if (hashOf(fields).toLowerCase() !== parsed.orderHash.toLowerCase()) fail("Order hash does not match the order fields. Import rejected.");
+
+  if (!tokenInfo(parsed.tokenId)) fail("Token " + parsed.tokenId + " is not registered on this chain.");
+  const now = (await readProvider.getBlock("latest")).timestamp;
+  if (parsed.orderExpiry <= now) fail("This order expired at " + fmtTime(parsed.orderExpiry) + " and can no longer be submitted.");
+
+  const seenSigners = new Set(), seenRoles = new Set(), cleaned = [];
+  for (const s of parsed.signatures) {
+    if (!s || typeof s !== "object") fail("A signature entry is malformed.");
+    if (!ROLES.includes(s.role)) fail("A signature has an unknown role: " + String(s.role).slice(0, 20));
+    if (typeof s.signer !== "string" || !ethers.isAddress(s.signer)) fail("A signature has an invalid signer address.");
+    if (typeof s.signature !== "string" || !ethers.isHexString(s.signature, 65)) fail("A " + s.role + " signature is not a valid 65-byte signature.");
+
+    // 2. The signature must really come from the claimed signer.
+    let recovered;
+    try { recovered = ethers.verifyMessage(ethers.getBytes(parsed.orderHash), s.signature); }
+    catch (_) { fail("A " + s.role + " signature could not be recovered."); }
+    if (recovered.toLowerCase() !== s.signer.toLowerCase()) fail("The " + s.role + " signature does not recover to the listed signer " + shortAddr(s.signer) + ".");
+
+    // 3. No signer twice, no role slot twice.
+    const key = recovered.toLowerCase();
+    if (seenSigners.has(key)) fail("Duplicate signer: " + shortAddr(recovered) + " appears more than once.");
+    if (seenRoles.has(s.role)) fail("The " + s.role + " slot is filled more than once.");
+    seenSigners.add(key); seenRoles.add(s.role);
+
+    // 4. The recovered address must hold exactly that role in the registry.
+    const info = await contract.registry(recovered);
+    if (!info.active || ID_ROLE[Number(info.role)] !== s.role) {
+      fail("The " + s.role + " signature recovers to " + shortAddr(recovered) + ", which has no active " + s.role + " role in the registry.");
+    }
+    cleaned.push({ signer: ethers.getAddress(recovered), role: s.role, signature: s.signature });
+  }
+  return { version: 1, tokenId: parsed.tokenId, action: parsed.action, caseNumber: parsed.caseNumber,
+           orderExpiry: parsed.orderExpiry, nonce: parsed.nonce, orderHash: parsed.orderHash, signatures: cleaned };
+}
 
 async function importOrder() {
-  const raw = document.getElementById("import-json").value.trim();
-  const validationEl = document.getElementById("import-validation");
-
+  const out = "import-msg";
+  setMsg(out, "", "");
   let parsed;
-  try { parsed = JSON.parse(raw); }
-  catch (_) { showValidation(validationEl, false, "Invalid JSON — cannot parse."); return; }
-
-  const required = ["tokenId","caseNumber","orderExpiry","nonce","action","orderHash","signatures"];
-  for (const k of required) {
-    if (!(k in parsed)) { showValidation(validationEl, false, "Missing field: " + k); return; }
-  }
-
-  // Re-derive order hash from fields and compare
-  const derivedData = ethers.solidityPacked(
-    ["string", "uint256", "uint256", "string", "uint256"],
-    [parsed.caseNumber, parsed.tokenId, parsed.orderExpiry, parsed.action, parsed.nonce]
-  );
-  const derivedHash = ethers.keccak256(derivedData);
-  if (derivedHash.toLowerCase() !== parsed.orderHash.toLowerCase()) {
-    showValidation(validationEl, false, "Order hash does not match order fields — import rejected."); return;
-  }
-
-  // Check for duplicate signers
-  const signerSet = new Set();
-  for (const s of parsed.signatures) {
-    const lower = (s.signer || "").toLowerCase();
-    if (signerSet.has(lower)) { showValidation(validationEl, false, "Duplicate signer: " + s.signer); return; }
-    signerSet.add(lower);
-  }
-
-  // If current user is already among signers, warn
-  if (connectedAddress && signerSet.has(connectedAddress.toLowerCase())) {
-    showValidation(validationEl, false, "You have already signed this order."); return;
-  }
-
-  currentOrder = {
-    tokenId: parsed.tokenId,
-    caseNumber: parsed.caseNumber,
-    orderExpiry: parsed.orderExpiry,
-    nonce: parsed.nonce,
-    action: parsed.action,
-    orderHash: parsed.orderHash,
-    signatures: parsed.signatures.map(s => ({ signer: s.signer, role: Number(s.role), sig: s.sig }))
-  };
-
-  showValidation(validationEl, true,
-    "Valid order for Token #" + parsed.tokenId + " — " + parsed.action.toUpperCase() +
-    " | Case: " + parsed.caseNumber);
-
-  renderSigStatus();
-  checkReadyToSubmit();
-
-  // If connected wallet is a co-signer role and not yet signed → offer to co-sign
-  if (connectedSigner && (connectedRole === 2 || connectedRole === 3)) {
-    await coSign();
-  } else if (connectedSigner && connectedRole === 0) {
-    showValidation(validationEl, false, "Connected wallet has no registered role — cannot co-sign.");
-  } else if (!connectedSigner) {
-    showValidation(validationEl, true, "Import validated. Connect a CLERK or REGISTRAR wallet to co-sign.");
-  }
-}
-
-async function coSign() {
-  if (!connectedSigner) { alert("Connect wallet to co-sign."); return; }
-  if (connectedRole !== 2 && connectedRole !== 3) { alert("Only CLERK or REGISTRAR can co-sign."); return; }
-  if (!currentOrder) { alert("No order loaded."); return; }
-
-  // Check for duplicate
-  const alreadySigned = currentOrder.signatures.some(
-    s => s.signer.toLowerCase() === connectedAddress.toLowerCase()
-  );
-  if (alreadySigned) { alert("You have already signed this order."); return; }
-
-  let sig;
-  try {
-    sig = await NyayaWallet.signOrderHash(connectedSigner, currentOrder.orderHash);
-  } catch (e) { alert("Co-signing failed: " + (e.message || e)); return; }
-
-  currentOrder.signatures.push({ signer: connectedAddress, role: connectedRole, sig });
-
-  renderSigStatus();
-  renderExport();
-  document.getElementById("export-card").style.display = "block";
-  checkReadyToSubmit();
-}
-
-// ── Submit Order ────────────────────────────────────────────────────────────
-
-async function checkReadyToSubmit() {
-  if (!currentOrder) { document.getElementById("submit-card").style.display = "none"; return; }
-
-  const hasJudge = currentOrder.signatures.some(s => s.role === 1);
-  const hasCosig = currentOrder.signatures.some(s => s.role === 2 || s.role === 3);
-  const meetsThreshold = currentOrder.signatures.length >= quorumThreshold;
-  const ready = hasJudge && hasCosig && meetsThreshold;
-
-  document.getElementById("submit-card").style.display = "block";
-  document.getElementById("btn-submit").disabled = !ready;
-
-  // Show submit sig status
-  const submitSigList = document.getElementById("submit-sig-list");
-  submitSigList.innerHTML = "";
-  for (const s of currentOrder.signatures) {
-    const row = document.createElement("div");
-    row.className = "sig-status-row";
-    row.innerHTML = '<span class="sig-dot done"></span>' +
-      '<span>' + s.signer.slice(0,10) + "..." + s.signer.slice(-6) +
-      ' (' + (ROLE_NAMES[s.role] || "?") + ')</span>';
-    submitSigList.appendChild(row);
-  }
-
-  if (ready) {
-    // Run pre-check
-    await runPrecheck();
-  }
-}
-
-async function runPrecheck() {
-  const box = document.getElementById("precheck-box");
-  const rowsEl = document.getElementById("precheck-rows");
-  box.style.display = "block";
-  rowsEl.innerHTML = '<div style="font-size:13px;color:#94A3B8;">Running checks...</div>';
+  try { parsed = JSON.parse($("import-json").value.trim()); }
+  catch (_) { setMsg(out, "error", "That is not valid JSON, so it cannot be an order."); return; }
 
   try {
-    const sigs = currentOrder.signatures.map(s => s.sig);
-    const bitmask = await contract.getOrderChecks(
-      currentOrder.tokenId, currentOrder.orderHash,
-      currentOrder.orderExpiry, currentOrder.nonce, sigs
-    );
-    const num = Number(bitmask);
-    // For freeze: bits 0-10 relevant; for unfreeze: bit 11 too
-    const maxBit = currentOrder.action === "unfreeze" ? 12 : 11;
-    let html = "";
-    for (let i = 0; i < maxBit; i++) {
-      const pass = ((num >> i) & 1) === 1;
-      html += '<div class="precheck-row"><span class="pc-dot ' + (pass ? 'pass' : 'fail') + '"></span>' +
-        '<span>' + CHECK_NAMES[i] + ': ' + (pass ? 'PASS' : 'FAIL') + '</span></div>';
+    const incoming = await validateImport(parsed);
+    const sameOrder = order && order.orderHash.toLowerCase() === incoming.orderHash.toLowerCase();
+    if (sameOrder) {
+      // Merge into the order already open. A role slot that is already filled by a different signer is refused.
+      for (const s of incoming.signatures) {
+        const have = slotFor(s.role);
+        if (have && have.signer.toLowerCase() !== s.signer.toLowerCase()) {
+          throw new ImportError("The " + s.role + " slot is already filled by " + shortAddr(have.signer) + ".");
+        }
+      }
+      for (const s of incoming.signatures) if (!slotFor(s.role)) order.signatures.push(s);
+    } else {
+      order = { ...incoming, status: "collecting", txHash: null, checksBitmask: 0 };
     }
-    rowsEl.innerHTML = html;
-    document.getElementById("btn-submit").disabled = false;
+    order.signatures.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
+    $("import-json").value = ""; $("import-file").value = "";
+    setMsg(out, "ok", "Order imported: " + plainSummary(order) + ".");
+    emitOrder();
+    renderAll();
   } catch (e) {
-    rowsEl.innerHTML = '<div style="font-size:13px;color:#DC2626;">getOrderChecks failed: ' + (e.message || e) + '</div>';
+    if (e instanceof ImportError) setMsg(out, "error", e.message);
+    else setMsg(out, "error", "Could not check this order against the chain: " + (e.shortMessage || e.message));
   }
+}
+
+// ── Step 3: checks and submit ───────────────────────────────────────────────
+
+let checksSeq = 0;
+let checksPassed = false;
+
+function actionChecks() {
+  return checksCatalog.checks.filter(c => c.actions.includes(order.action));
+}
+
+async function runChecks() {
+  const seq = ++checksSeq;
+  checksPassed = false;
+  const list = $("checks-list");
+  $("btn-submit").disabled = true;
+  const rows = actionChecks();
+  list.replaceChildren(...rows.map(c => checkRow(c, "wait")));
+  try {
+    const sigs = ROLES.map(r => slotFor(r).signature);
+    let mask = BigInt(await contract.getOrderChecks(order.tokenId, order.orderHash, order.orderExpiry, order.nonce, sigs));
+    // getOrderChecks takes no action, so it never reports the unfreeze-only "token is frozen" bit,
+    // although submitUnfreezeOrder enforces it. Read the same fact from the contract so unfreeze can proceed.
+    if (order.action === "unfreeze") {
+      const fz = checksCatalog.checks.find(c => c.id === "FROZEN_STATE");
+      if (fz && await contract.frozen(order.tokenId)) mask |= (1n << BigInt(fz.bit));
+    }
+    if (seq !== checksSeq) return;
+    let all = true;
+    list.replaceChildren(...rows.map(c => {
+      const pass = ((mask >> BigInt(c.bit)) & 1n) === 1n;
+      if (!pass) all = false;
+      return checkRow(c, pass ? "pass" : "fail");
+    }));
+    checksPassed = all;
+    setMsg("step3-msg", all ? "ok" : "error", all ? "All checks pass. The order can be submitted." : "Some checks fail, so the contract would reject this order. Fix the cause or start over.");
+  } catch (e) {
+    if (seq !== checksSeq) return;
+    setMsg("step3-msg", "error", "Could not run the checks: " + (e.shortMessage || e.message));
+  }
+  renderSubmitState();
+}
+
+function checkRow(c, state) {
+  const row = document.createElement("div"); row.className = "check-row";
+  const badge = document.createElement("span"); badge.className = "check-badge " + state;
+  badge.textContent = state === "pass" ? "PASS" : state === "fail" ? "FAIL" : "…";
+  const text = document.createElement("span");
+  text.textContent = c.name;
+  const desc = document.createElement("span"); desc.className = "check-desc"; desc.textContent = c.description;
+  text.appendChild(desc);
+  row.append(badge, text);
+  return row;
+}
+
+function renderSubmitState() {
+  const st = statusOf();
+  $("btn-submit").disabled = !(st === "ready" && checksPassed && connectedSigner);
 }
 
 async function submitOrder() {
-  if (!currentOrder) return;
-  if (!connectedSigner) { alert("Connect a wallet to submit."); return; }
-
-  const stepsCard = document.getElementById("steps-card");
-  stepsCard.style.display = "block";
-  document.getElementById("court-result").style.display = "none";
-
-  const sigs = currentOrder.signatures.map(s => s.sig);
-  const action = currentOrder.action;
-
-  setStep("precheck", "pass", "1. Pre-validate: checks run");
-
-  const submitBtn = document.getElementById("btn-submit");
-  submitBtn.className = "btn btn-waiting"; submitBtn.disabled = true; submitBtn.textContent = "Waiting for block...";
-
+  if (statusOf() !== "ready" || !checksPassed || !connectedSigner) return;
+  const btn = $("btn-submit");
+  btn.disabled = true; btn.className = "btn btn-waiting"; btn.textContent = "Waiting for block…";
+  order.status = "submitted"; emitOrder();
+  const sigs = ROLES.map(r => slotFor(r).signature);
   try {
-    setStep("submit", "pass", "2. Submitting " + action.toUpperCase() + " (nonce=" + currentOrder.nonce + ")...");
-
-    let tx;
-    if (action === "freeze") {
-      tx = await contract.connect(connectedSigner).submitFreezeOrder(
-        currentOrder.tokenId, currentOrder.caseNumber, currentOrder.orderHash,
-        currentOrder.orderExpiry, currentOrder.nonce, sigs
-      );
-    } else {
-      tx = await contract.connect(connectedSigner).submitUnfreezeOrder(
-        currentOrder.tokenId, currentOrder.caseNumber, currentOrder.orderHash,
-        currentOrder.orderExpiry, currentOrder.nonce, sigs
-      );
-    }
-
-    setStep("confirm", "pass", "3. Waiting for block confirmation...");
+    const c = contract.connect(connectedSigner);
+    const tx = order.action === "freeze"
+      ? await c.submitFreezeOrder(order.tokenId, order.caseNumber, order.orderHash, order.orderExpiry, order.nonce, sigs)
+      : await c.submitUnfreezeOrder(order.tokenId, order.caseNumber, order.orderHash, order.orderExpiry, order.nonce, sigs);
+    order.txHash = tx.hash;
     const receipt = await tx.wait();
-    setStep("confirm", "pass", "3. Confirmed in block #" + receipt.blockNumber);
 
-    let storedBitmask = 0n;
+    let signers = null, mask = 0;
     try {
-      const histLen = await contract.getFreezeHistoryLength(currentOrder.tokenId);
-      const entry = await contract.getFreezeHistoryEntry(currentOrder.tokenId, Number(histLen) - 1);
-      storedBitmask = entry.checksBitmask;
+      const idx = Number(await contract.getFreezeHistoryLength(order.tokenId)) - 1;
+      const entry = await contract.getFreezeHistoryEntry(order.tokenId, idx);
+      mask = Number(entry.checksBitmask);
+      const hs = await contract.getFreezeHistorySigners(order.tokenId, idx);
+      signers = hs.signers.map((a, i) => ({ address: a, role: ID_ROLE[Number(hs.roles[i])] || "?" }));
     } catch (_) {}
-
-    setStep("result", "pass", "4. " + action.toUpperCase() + " ACCEPTED — bitmask: 0x" + Number(storedBitmask).toString(16));
-
-    showResult("success",
-      action.toUpperCase() + " ACCEPTED",
-      "<strong>Token #" + currentOrder.tokenId + "</strong> is now " + (action === "freeze" ? "FROZEN" : "UNFROZEN") + "<br>" +
-      "<strong>Case:</strong> " + currentOrder.caseNumber + "<br>" +
-      "<strong>Nonce used:</strong> " + currentOrder.nonce + "<br>" +
-      "<strong>Checks bitmask:</strong> 0x" + Number(storedBitmask).toString(16) +
-      '<span class="tx-hash">Tx: ' + receipt.hash + '</span>'
-    );
-
-    updatePropertyDisplay();
-    // Update nonce for next order if connected as judge
-    if (connectedRole === 1) {
-      const nextNonce = await contract.judgeNonce(connectedAddress);
-      document.getElementById("court-nonce").value = nextNonce.toString();
-    }
-
+    order.status = "accepted"; order.checksBitmask = mask; order.txHash = receipt.hash;
+    showResult(true, order.action === "freeze" ? "FREEZE ACCEPTED" : "UNFREEZE ACCEPTED", signers, receipt.blockNumber);
+    emitOrder();
+    await loadTokens();
+    if (connectedRole === "JUDGE") { try { $("court-nonce").value = (await contract.judgeNonce(connectedAddress)).toString(); } catch (_) {} }
   } catch (e) {
-    const reason = e.reason || e.message || "Unknown error";
-    setStep("submit", "fail", "2. Failed: " + reason);
-    setStep("result", "fail", "4. " + action.toUpperCase() + " REJECTED");
-    showResult("fail", action.toUpperCase() + " REJECTED", "<strong>Reason:</strong> " + reason);
+    order.status = "ready";
+    const reason = e && (e.code === 4001 || e.code === "ACTION_REJECTED") ? "Submission was cancelled in your wallet." : (e.reason || e.shortMessage || e.message || "Unknown error");
+    showResult(false, "ORDER REJECTED", null, null, reason);
+    emitOrder();
   } finally {
-    submitBtn.className = "btn btn-green"; submitBtn.disabled = false; submitBtn.textContent = "Submit Order";
+    btn.className = "btn btn-green"; btn.textContent = "Submit to chain";
+    renderAll();
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-function renderSigStatus() {
-  if (!currentOrder) return;
-  const box = document.getElementById("sig-status-box");
-  const list = document.getElementById("sig-list");
-  const thresh = document.getElementById("sig-threshold");
-  box.style.display = "block";
-  list.innerHTML = "";
-  for (const s of currentOrder.signatures) {
-    const row = document.createElement("div");
-    row.className = "sig-status-row";
-    row.innerHTML = '<span class="sig-dot done"></span>' +
-      '<span>' + s.signer.slice(0,10) + "..." + s.signer.slice(-6) +
-      ' (' + (ROLE_NAMES[s.role] || "?") + ') — signed</span>';
-    list.appendChild(row);
-  }
-  const hasJudge = currentOrder.signatures.some(s => s.role === 1);
-  const hasCosig = currentOrder.signatures.some(s => s.role === 2 || s.role === 3);
-  if (!hasJudge) {
-    const row = document.createElement("div");
-    row.className = "sig-status-row";
-    row.innerHTML = '<span class="sig-dot needed"></span><span>JUDGE — needed</span>';
-    list.appendChild(row);
-  }
-  if (!hasCosig) {
-    const row = document.createElement("div");
-    row.className = "sig-status-row";
-    row.innerHTML = '<span class="sig-dot needed"></span><span>CLERK or REGISTRAR — needed</span>';
-    list.appendChild(row);
-  }
-  thresh.textContent = "On-chain quorum threshold: " + quorumThreshold + " signature(s). " +
-    currentOrder.signatures.length + "/" + quorumThreshold + " collected.";
-}
-
-function renderExport() {
-  if (!currentOrder) return;
-  const exportData = {
-    tokenId:     currentOrder.tokenId,
-    caseNumber:  currentOrder.caseNumber,
-    orderExpiry: currentOrder.orderExpiry,
-    nonce:       currentOrder.nonce,
-    action:      currentOrder.action,
-    orderHash:   currentOrder.orderHash,
-    signatures:  currentOrder.signatures
+function showResult(ok, title, signers, block, reason) {
+  const el = $("court-result");
+  el.className = "result-card " + (ok ? "success" : "fail");
+  el.style.display = "block";
+  $("result-title").textContent = title;
+  const body = $("result-body"); body.replaceChildren();
+  const line = (label, value, mono) => {
+    const d = document.createElement("div");
+    const b = document.createElement("strong"); b.textContent = label + " ";
+    const s = document.createElement("span"); s.textContent = value;
+    if (mono) { s.className = "tx-hash"; }
+    d.append(b, s); body.appendChild(d);
   };
-  document.getElementById("export-json").value = JSON.stringify(exportData, null, 2);
+  if (ok) {
+    line("Parcel:", "Token " + order.tokenId + " is now " + (order.action === "freeze" ? "FROZEN" : "UNFROZEN") + " (case " + order.caseNumber + ")");
+    line("Confirmed in block:", "#" + block);
+    if (signers) for (const s of signers) line(ROLE_LABEL[s.role] || s.role, s.address);
+    line("Transaction:", order.txHash, true);
+  } else {
+    line("Reason:", reason);
+  }
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function copyExport() {
-  const ta = document.getElementById("export-json");
-  ta.select();
-  document.execCommand("copy");
-  alert("Copied to clipboard.");
+// ── Rendering ───────────────────────────────────────────────────────────────
+
+function renderAll() {
+  const isJudge = connectedRole === "JUDGE";
+  $("step1-notjudge").style.display = (connectedRole && !isJudge) ? "block" : "none";
+  $("step1-form").style.display = isJudge ? "block" : "none";
+  $("btn-review").disabled = !isJudge || !tokens.length;
+  if (!isJudge) $("summary-card").style.display = "none";
+
+  const has = !!order;
+  $("step2-empty").style.display = has ? "none" : "block";
+  $("step2-order").style.display = has ? "block" : "none";
+  $("btn-export").disabled = !has;
+  if (!has) $("export-panel").classList.remove("open");
+
+  if (has) {
+    $("order-summary").textContent = plainSummary(order);
+    renderSlots();
+    try { $("export-json").value = exportJson(); } catch (_) {}
+  }
+
+  const ready = has && order.signatures.length >= ROLES.length;
+  $("step3-empty").style.display = ready ? "none" : "block";
+  $("step3-body").style.display = ready ? "block" : "none";
+  if (ready) {
+    $("checks-action").textContent = order.action;
+    if (statusOf() === "ready" && !$("checks-list").childElementCount) runChecks();
+    renderSubmitState();
+  } else {
+    $("checks-list").replaceChildren(); checksPassed = false;
+    $("court-result").style.display = "none"; setMsg("step3-msg", "", "");
+  }
+}
+
+function renderSlots() {
+  const wrap = $("slots"); wrap.replaceChildren();
+  const open = statusOf() === "collecting";
+  for (const role of ROLES) {
+    const s = slotFor(role);
+    const div = document.createElement("div"); div.className = "slot" + (s ? " signed" : "");
+    const r = document.createElement("div"); r.className = "slot-role"; r.textContent = ROLE_LABEL[role];
+    const st = document.createElement("div"); st.className = "slot-state"; st.textContent = s ? "Signed" : "Pending";
+    div.append(r, st);
+    if (s) {
+      const m = document.createElement("div"); m.className = "slot-meta";
+      m.textContent = shortAddr(s.signer) + "\n" + shortSig(s.signature);
+      m.style.whiteSpace = "pre-line";
+      div.appendChild(m);
+    } else if (open && role === connectedRole) {
+      const b = document.createElement("button"); b.className = "btn btn-primary"; b.textContent = "Sign as " + ROLE_LABEL[role];
+      b.addEventListener("click", () => coSign(role));
+      div.appendChild(b);
+    }
+    wrap.appendChild(div);
+  }
+  const n = order.signatures.length;
+  $("sig-count").textContent = n + " of " + ROLES.length + " signed";
 }
 
 function resetFlow() {
-  currentOrder = null;
-  document.getElementById("export-card").style.display = "none";
-  document.getElementById("submit-card").style.display = "none";
-  document.getElementById("sig-status-box").style.display = "none";
-  document.getElementById("steps-card").style.display = "none";
-  document.getElementById("court-result").style.display = "none";
-  document.getElementById("import-json").value = "";
-  document.getElementById("export-json").value = "";
-  document.getElementById("import-validation").style.display = "none";
+  order = null; draft = null; checksSeq++; checksPassed = false;
+  $("summary-card").style.display = "none";
+  $("court-result").style.display = "none";
+  $("checks-list").replaceChildren();
+  ["step1-msg", "step2-msg", "step3-msg", "import-msg"].forEach(id => setMsg(id, "", ""));
+  $("import-json").value = ""; $("export-json").value = "";
+  $("export-panel").classList.remove("open"); $("import-panel").classList.remove("open");
+  renderAll();
 }
 
-function showValidation(el, ok, msg) {
-  el.style.display = "block";
-  el.style.color = ok ? "#16A34A" : "#DC2626";
-  el.style.background = ok ? "#F0FDF4" : "#FEF2F2";
-  el.style.padding = "8px 12px";
-  el.style.borderRadius = "6px";
-  el.style.border = "1px solid " + (ok ? "#BBF7D0" : "#FCA5A5");
-  el.textContent = msg;
-}
+// ── Wiring ──────────────────────────────────────────────────────────────────
 
-function setStep(name, status, text) {
-  const el = document.getElementById("step-" + name);
-  if (!el) return;
-  el.className = "step-row " + status;
-  el.innerHTML = '<div class="step-icon"><span class="step-dot"></span></div>' +
-    '<div class="step-body">' + (text || '') + '</div>';
-}
-
-function showResult(type, title, bodyHtml) {
-  const el = document.getElementById("court-result");
-  el.className = "result-card " + (type === "success" ? "success" : "fail");
-  el.style.display = "block";
-  document.getElementById("result-title").textContent = title;
-  document.getElementById("result-body").innerHTML = bodyHtml;
-  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
+$("court-tokenid").addEventListener("change", () => { showParcelNote(); $("summary-card").style.display = "none"; });
+["court-action", "court-case", "court-expiry"].forEach(id => $(id).addEventListener("input", () => { $("summary-card").style.display = "none"; draft = null; }));
+$("btn-review").addEventListener("click", reviewOrder);
+$("btn-sign-draft").addEventListener("click", signDraft);
+$("btn-edit-draft").addEventListener("click", () => { $("summary-card").style.display = "none"; draft = null; });
+$("btn-export").addEventListener("click", () => { if (order) { $("export-json").value = exportJson(); $("export-panel").classList.toggle("open"); } });
+$("btn-import-toggle").addEventListener("click", () => $("import-panel").classList.toggle("open"));
+$("btn-copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("export-json").value); setMsg("step2-msg", "ok", "Copied to clipboard."); }
+  catch (_) { $("export-json").select(); setMsg("step2-msg", "info", "Press Ctrl+C to copy the selected text."); }
+});
+$("btn-download").addEventListener("click", () => {
+  if (!order) return;
+  const url = URL.createObjectURL(new Blob([exportJson()], { type: "application/json" }));
+  const a = document.createElement("a"); a.href = url; a.download = "order-" + order.orderHash.slice(2, 10) + ".json";
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+$("import-file").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 100000) { setMsg("import-msg", "error", "That file is too large to be an order."); return; }
+  $("import-json").value = await f.text();
+});
+$("btn-import").addEventListener("click", importOrder);
+$("btn-submit").addEventListener("click", submitOrder);
+$("btn-recheck").addEventListener("click", () => { if (order && order.signatures.length >= ROLES.length) runChecks(); });
+$("btn-reset").addEventListener("click", resetFlow);
 
 init();
 </script>
