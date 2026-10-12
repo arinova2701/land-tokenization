@@ -1,11 +1,12 @@
 /**
  * Negative Corpus — CourtKeyRegistry + ParcelToken
- * 26 test cases: 20 original rejection paths + 6 new (Steps 1–3 additions).
+ * 27 test cases: 20 original rejection paths + 6 new (Steps 1–3 additions)
+ *                + 1 multi-signer happy-path (Sprint 7 demo coverage).
  *
  * Run on Hardhat (fast):
  *   npx hardhat test test/negative-corpus.js
  *
- * Run on Besu (slow — 2s block time × ~10 tx/setup × 26 tests ≈ 13 min):
+ * Run on Besu (slow — 2s block time × ~10 tx/setup × 27 tests ≈ 14 min):
  *   npx hardhat test test/negative-corpus.js --network besu
  *
  * Design note on case 15 (freeze already-frozen token):
@@ -175,7 +176,7 @@ async function deploy() {
 
 // ─── Suite ────────────────────────────────────────────────────────────────────
 
-describe("Negative Corpus (26 cases)", function () {
+describe("Negative Corpus (27 cases)", function () {
   this.timeout(600_000);
 
   // ── Case 1: Unregistered signer ───────────────────────────────────────────
@@ -541,6 +542,68 @@ describe("Negative Corpus (26 cases)", function () {
       token.connect(outsider).setAddressFrozen(addr, true),
       "ParcelToken: caller is not agent"
     );
+  });
+
+  // ── Case 27: Multi-signer submit path — happy path with demo-style wallets ─
+  //
+  // Covers the full freeze → unfreeze lifecycle using freshly created wallets
+  // (same pattern as scripts/setup-demo-wallets.js) rather than the Hardhat
+  // deterministic accounts used in all other cases.  This gives the demo flow
+  // direct automated test coverage.
+  it("Case 27 — multi-signer submit succeeds with demo-style random wallets", async function () {
+    const { c, token, admin } = await deploy();
+
+    // Create fresh random wallets, fund them from admin, and wire them up
+    const provider = ethers.provider;
+    const judgeW    = ethers.Wallet.createRandom().connect(provider);
+    const clerkW    = ethers.Wallet.createRandom().connect(provider);
+
+    // Fund with enough for gas
+    await (await admin.sendTransaction({ to: judgeW.address, value: ethers.parseEther("1") })).wait();
+    await (await admin.sendTransaction({ to: clerkW.address, value: ethers.parseEther("1") })).wait();
+
+    // Register the fresh wallets in the registry
+    const vellore = ethers.keccak256(ethers.toUtf8Bytes("vellore"));
+    const now     = Math.floor(Date.now() / 1000);
+    await (await c.registerJudge(judgeW.address, "Demo District Court", 0, now + 86400, 3, vellore, 1)).wait();
+    await (await c.registerJudge(clerkW.address,  "Demo Clerk Office",  0, now + 86400, 3, vellore, 2)).wait();
+
+    // Build and multi-sign the freeze order (same flow as demo)
+    const expiry = Math.floor(Date.now() / 1000) + 3600;
+    const packed = ethers.solidityPacked(
+      ["string", "uint256", "uint256", "string", "uint256"],
+      ["DEMO-CASE-27", 1, expiry, "freeze", 0]
+    );
+    const orderHash = ethers.keccak256(packed);
+    const judgeSig  = await judgeW.signMessage(ethers.getBytes(orderHash));
+    const clerkSig  = await clerkW.signMessage(ethers.getBytes(orderHash));
+
+    // Submit — must succeed
+    const tx = await c.connect(judgeW).submitFreezeOrder(
+      1, "DEMO-CASE-27", orderHash, expiry, 0, [judgeSig, clerkSig]
+    );
+    await tx.wait();
+
+    // Verify token is frozen
+    const isFrozen = await c.frozen(1);
+    if (!isFrozen) throw new Error("Token should be frozen after multi-signer submit");
+
+    // Unfreeze with new nonce (judgeW nonce is now 1)
+    const packed2 = ethers.solidityPacked(
+      ["string", "uint256", "uint256", "string", "uint256"],
+      ["DEMO-CASE-27-UNFREEZE", 1, expiry, "unfreeze", 1]
+    );
+    const hash2     = ethers.keccak256(packed2);
+    const judgeSig2 = await judgeW.signMessage(ethers.getBytes(hash2));
+    const clerkSig2 = await clerkW.signMessage(ethers.getBytes(hash2));
+
+    const tx2 = await c.connect(judgeW).submitUnfreezeOrder(
+      1, "DEMO-CASE-27-UNFREEZE", hash2, expiry, 1, [judgeSig2, clerkSig2]
+    );
+    await tx2.wait();
+
+    const afterUnfreeze = await c.frozen(1);
+    if (afterUnfreeze) throw new Error("Token should be unfrozen after unfreeze order");
   });
 
 });
