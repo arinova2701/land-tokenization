@@ -16,7 +16,11 @@ const HARDHAT_KEYS = [
 module.exports = {
   solidity: {
     version: "0.8.26",
-    settings: { evmVersion: "cancun" }
+    settings: {
+      evmVersion: "cancun",
+      viaIR: true,
+      optimizer: { enabled: true, runs: 200 }
+    }
   },
   networks: {
     hardhat: {
