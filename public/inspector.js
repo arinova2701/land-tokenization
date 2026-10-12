@@ -74,6 +74,12 @@
     }));
     let bitmask = accepted ? BigInt(context.checksBitmask || 0) :
       await c.getOrderChecks(order.tokenId, d.hash, order.orderExpiry, order.nonce, signatures.map(s => s.signature));
+    const rawPreflightBitmask = BigInt(bitmask);
+    if (!accepted && order.action === "unfreeze" && currentFrozen) {
+      // Sprint 0b getOrderChecks omits this bit; submitUnfreezeOrder checks it.
+      const frozenCheck = catalog.checks.find(ch => ch.id === "FROZEN_STATE");
+      bitmask = BigInt(bitmask) | (1n << BigInt(frozenCheck.bit));
+    }
     if (accepted && !bitmask) {
       const count = Number(await c.getFreezeHistoryLength(order.tokenId));
       if (count) bitmask = BigInt((await c.getFreezeHistoryEntry(order.tokenId, count - 1)).checksBitmask);
@@ -101,7 +107,7 @@
         default: return "Read from contract";
       }
     };
-    return { order, d, signerInfo, parcelCode, parcelName, parentName, declaredValue, used, currentFrozen, bitmask: BigInt(bitmask), accepted, checks: catalog.checks.filter(ch => ch.actions.includes(order.action || "freeze")), actual, block };
+    return { order, d, signerInfo, parcelCode, parcelName, parentName, declaredValue, used, currentFrozen, rawPreflightBitmask, bitmask: BigInt(bitmask), accepted, checks: catalog.checks.filter(ch => ch.actions.includes(order.action || "freeze")), actual, block };
   }
   async function extraPanels(context, v) {
     const judge = v.signerInfo.find(s => Number(s.key?.role) === 1);
@@ -151,7 +157,7 @@
       out.innerHTML = `<section><h3>Order digest</h3><dl><dt>Fields</dt><dd>Token ${esc(v.order.tokenId)} · ${esc(v.order.caseNumber)} · expiry ${esc(v.order.orderExpiry)} · nonce ${esc(v.order.nonce)}</dd><dt>Encoding</dt><dd>Solidity <code>abi.encode(uint256,string,uint256,uint256)</code> (not packed)</dd><dt>ABI bytes</dt><dd><code>${esc(v.d.encoded)}</code></dd><dt>keccak256</dt><dd><code>${esc(v.d.hash)}</code></dd><dt>EIP-191</dt><dd><code>\\x19Ethereum Signed Message:\\n32 || digest</code> → <code>${esc(v.d.signedHash)}</code></dd></dl></section>
         <section><h3>Signatures</h3><div class="inspector-scroll"><table><thead><tr><th>#</th><th>Recovered signer</th><th>Role</th><th>Court / level</th><th>Validity at latest block</th></tr></thead><tbody>${signerRows || '<tr><td colspan="5">No signatures supplied yet</td></tr>'}</tbody></table></div></section>
         <section><h3>Jurisdiction</h3><p>Parcel ${esc(v.parcelName || v.parcelCode)} → ${esc(v.parentName || "no parent")}; declared value ${esc(money(v.declaredValue))}.</p><p>${v.signerInfo.map(s => `${esc(roleName(s.key?.role))}: ${esc(s.territory || "unknown")}${Number(s.key?.role) === 3 ? " (national exemption)" : ""}`).join(" · ") || "Awaiting signatures"}</p></section>
-        <section><h3>${v.accepted ? "Stored acceptance" : "Preflight"} checks</h3><p>Bitmask <code>0x${v.bitmask.toString(16)}</code> ${v.accepted ? "from accepted order" : "from getOrderChecks at latest block"}</p><div class="inspector-scroll"><table><thead><tr><th>Bit</th><th>Check</th><th>Actual comparison</th><th>Result</th></tr></thead><tbody>${checkRows}</tbody></table></div></section>${extras}`;
+        <section><h3>${v.accepted ? "Stored acceptance" : "Preflight"} checks</h3><p>Bitmask <code>0x${v.bitmask.toString(16)}</code> ${v.accepted ? "from accepted order" : `from getOrderChecks at latest block${v.order.action === "unfreeze" ? ` (raw 0x${v.rawPreflightBitmask.toString(16)}; frozen-state bit read directly from chain)` : ""}`}</p><div class="inspector-scroll"><table><thead><tr><th>Bit</th><th>Check</th><th>Actual comparison</th><th>Result</th></tr></thead><tbody>${checkRows}</tbody></table></div></section>${extras}`;
     } catch (e) { if (current === revision) out.textContent = `Inspector could not read this order: ${e.shortMessage || e.message}`; }
   }
   window.NyayaInspector = { attach, setOrder, inspect, digest, loadChecks, ABI, roleName, money };
