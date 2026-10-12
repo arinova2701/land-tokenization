@@ -6,6 +6,7 @@
 <title>NyayaChain — Registrar Portal</title>
 <link rel="icon" href="Logo-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<script src="wallet.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -105,6 +106,19 @@ nav {
   font-family: 'Aileron', system-ui, sans-serif;
 }
 
+/* ── Wallet Connect ── */
+.wallet-bar {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  padding: 14px 18px; border-radius: 10px;
+  background: #EFF6FF; border: 1px solid #BFDBFE;
+}
+.wallet-role {
+  font-size: 15px; font-weight: 700; padding: 2px 10px; border-radius: 8px;
+  background: #DBEAFE; color: #1D4ED8;
+}
+.wallet-role.role-none { background: #F1F5F9; color: #94A3B8; }
+.wallet-role.role-registrar { background: #F3E8FF; color: #7C3AED; }
+
 /* ── Form ── */
 .form-group { margin-bottom: 14px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -123,14 +137,6 @@ input, select {
 }
 input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
 
-/* ── Admin info ── */
-.admin-info {
-  display: flex; align-items: center; gap: 8px;
-  background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px;
-  padding: 12px 16px; margin-bottom: 20px; font-size: 20px; color: #1E40AF;
-}
-.admin-addr { font-family: monospace; font-size: 14px; color: #2563EB; }
-
 /* ── Revoke section ── */
 .revoke-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid #F1F5F9; }
 .revoke-title {
@@ -145,11 +151,14 @@ input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37
   display: inline-flex; align-items: center; gap: 8px;
   padding: 13px 32px; border-radius: 8px; font-size: 20px; font-weight: 600;
   font-family: 'Aileron', system-ui, sans-serif; cursor: pointer; transition: all 0.15s;
+  border: 2px solid transparent;
 }
-.btn-primary { background: #2563EB; color: #fff; border: 2px solid #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
-.btn-primary:hover { background: #1D4ED8; border-color: #1D4ED8; }
-.btn-danger { background: transparent; color: #DC2626; border: 2px solid #DC2626; }
-.btn-danger:hover { background: #FEF2F2; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: #2563EB; color: #fff; border-color: #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+.btn-primary:not(:disabled):hover { background: #1D4ED8; border-color: #1D4ED8; }
+.btn-danger { background: transparent; color: #DC2626; border-color: #DC2626; }
+.btn-danger:not(:disabled):hover { background: #FEF2F2; }
+.btn-waiting { background: #64748B; color: #fff; border-color: #64748B; cursor: wait; }
 
 /* ── Result ── */
 .result-card { border-radius: 10px; padding: 20px 22px; display: none; margin-top: 20px; }
@@ -242,13 +251,23 @@ footer {
 <!-- ── Page Content ── -->
 <div class="page-content">
 
+  <!-- Wallet Connect Card -->
+  <div class="card">
+    <div class="card-title">Wallet</div>
+    <div class="wallet-bar" id="wallet-bar">
+      <span id="wallet-addr" style="font-family:monospace;font-size:15px;color:#94A3B8;">Not connected</span>
+      <span class="wallet-role role-none" id="wallet-role">—</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-primary" id="btn-connect" onclick="connectWallet()" style="padding:9px 22px;font-size:17px;">Connect Wallet</button>
+    </div>
+    <p style="font-size:15px;color:#94A3B8;margin-top:4px;">
+      Admin actions require a wallet registered as ROLE_REGISTRAR. Import the registrar key from demo-wallets.json into MetaMask.
+    </p>
+  </div>
+
   <!-- Register Card -->
   <div class="card">
     <div class="card-title">Register Authorized Judge</div>
-
-    <div class="admin-info" id="admin-info">
-      <div>Registrar (admin) account: <span class="admin-addr" id="admin-addr">loading...</span></div>
-    </div>
 
     <div class="form-group">
       <label for="reg-address">Judge Wallet Address</label>
@@ -303,27 +322,27 @@ footer {
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="registerJudge()">Register Judge</button>
+      <button class="btn btn-primary" id="btn-register" onclick="registerJudge()" disabled>Register Judge</button>
     </div>
 
     <div class="revoke-section">
       <div class="revoke-title">Revoke Authorization</div>
       <div class="revoke-note">Immediately disables a judge's ability to submit freeze orders. Address is pre-filled from the field above.</div>
       <div class="btn-row" style="margin-top:0;">
-        <button class="btn btn-danger" onclick="revokeJudge()">Revoke Judge</button>
+        <button class="btn btn-danger" id="btn-revoke" onclick="revokeJudge()" disabled>Revoke Judge</button>
       </div>
     </div>
 
     <div class="result-card" id="reg-result">
       <div class="result-header">
-        <span id="reg-result-icon"></span>
+        <span class="result-dot"></span>
         <span class="result-header-title" id="reg-result-title"></span>
       </div>
       <div class="result-body" id="reg-result-body"></div>
     </div>
   </div>
 
-  <!-- Pecuniary Jurisdiction Card (Step 2) -->
+  <!-- Pecuniary Jurisdiction Card -->
   <div class="card">
     <div class="card-title">Pecuniary Jurisdiction</div>
 
@@ -348,7 +367,7 @@ footer {
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="setCourtLevelMax()">Set Court Level Max Value</button>
+      <button class="btn btn-primary" id="btn-setlevel" onclick="setCourtLevelMax()" disabled>Set Court Level Max Value</button>
     </div>
 
     <div style="margin-top:20px; padding-top:16px; border-top:1px solid #F1F5F9;">
@@ -367,12 +386,12 @@ footer {
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="setDeclaredValue()">Set Parcel Declared Value</button>
+        <button class="btn btn-primary" id="btn-setdecl" onclick="setDeclaredValue()" disabled>Set Parcel Declared Value</button>
       </div>
     </div>
 
     <div class="result-card" id="pec-result">
-      <div class="result-header"><span id="pec-result-icon"></span><span class="result-header-title" id="pec-result-title"></span></div>
+      <div class="result-header"><span class="result-dot"></span><span class="result-header-title" id="pec-result-title"></span></div>
       <div class="result-body" id="pec-result-body"></div>
     </div>
   </div>
@@ -396,71 +415,109 @@ const ABI = [
   "function admin() view returns (address)",
   "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
   "function judgeNonce(address) view returns (uint256)",
-  "function frozen(uint256) view returns (bool)",
-  "function frozenBy(uint256) view returns (string)",
-  "function usedOrders(bytes32) view returns (bool)",
   "function propertyTerritory(uint256) view returns (bytes32)",
-  "function parentTerritory(bytes32) view returns (bytes32)",
   "function territoryName(bytes32) view returns (string)",
   "function parcelDeclaredValue(uint256) view returns (uint256)",
   "function courtLevelMaxValue(uint8) view returns (uint256)",
   "function quorumThreshold() view returns (uint256)",
-  "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
-  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
-  "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
-  "function setTerritory(bytes32 code, string name, bytes32 parent)",
-  "function registerProperty(uint256 tokenId, bytes32 territory, uint256 declaredValue)",
   "function setParcelDeclaredValue(uint256 tokenId, uint256 value)",
   "function setCourtLevelMaxValue(uint8 courtLevel, uint256 maxValue)",
-  "function setQuorumThreshold(uint256 threshold)",
   "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory, uint8 role)",
-  "function revokeJudge(address signer)",
-  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory)",
-  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
-  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
-  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
+  "function revokeJudge(address signer)"
 ];
 
 const COURT_LEVELS = { 1: "District Munsif", 2: "Sub Court", 3: "District Court", 4: "High Court" };
+const ROLE_NAMES   = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
 const TERRITORY_KEYS = {
   vellore: null, chennai: null, tamil_nadu: null, kadapa: null, andhra_pradesh: null
 };
 
-let provider, contract, signers, config;
+let readProvider, contract, config;
+let connectedSigner  = null;
+let connectedAddress = null;
+let connectedRole    = 0;
 
 async function init() {
   const connBar = document.getElementById("connBar");
   try {
-    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-    const network = await provider.getNetwork();
+    readProvider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const network = await readProvider.getNetwork();
     const resp = await fetch("config.json");
     config = await resp.json();
-    contract = new ethers.Contract(config.contractAddress, ABI, provider);
-    const accounts = await provider.listAccounts();
-    signers = accounts;
+    contract = new ethers.Contract(config.contractAddress, ABI, readProvider);
 
     for (const key of Object.keys(TERRITORY_KEYS)) {
       TERRITORY_KEYS[key] = ethers.keccak256(ethers.toUtf8Bytes(key));
     }
 
     const short = config.contractAddress.slice(0, 10) + "..." + config.contractAddress.slice(-6);
-    connBar.textContent = "Connected — Chain ID: " + network.chainId + " | Contract: " + short;
+    connBar.textContent = "Chain ID: " + network.chainId + " | Contract: " + short;
     document.getElementById("navDot").classList.remove("disconnected");
     document.getElementById("navStatusText").textContent = "Connected";
     document.getElementById("navStatus").classList.add("connected");
 
-    document.getElementById("admin-addr").textContent = config.adminAddress;
-    document.getElementById("reg-address").value = config.judgeAddress;
-
     loadJudges();
     loadLevelMaxValues();
+
+    NyayaWallet.onWalletChange(() => {
+      connectedSigner = null; connectedAddress = null; connectedRole = 0;
+      updateWalletUI();
+    });
   } catch (e) {
     connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
     connBar.className = "conn-bar error";
     document.getElementById("navStatusText").textContent = "Not connected";
     console.error(e);
+  }
+}
+
+async function connectWallet() {
+  const btn = document.getElementById("btn-connect");
+  btn.textContent = "Connecting..."; btn.disabled = true;
+  try {
+    const { provider, signer, address } = await NyayaWallet.connectWallet();
+    connectedSigner  = signer;
+    connectedAddress = address;
+    try {
+      const info = await contract.registry(address);
+      connectedRole = info.active ? Number(info.role) : 0;
+    } catch (_) { connectedRole = 0; }
+    updateWalletUI();
+  } catch (e) {
+    alert("Wallet connection failed: " + (e.message || e));
+  } finally {
+    btn.textContent = "Connect Wallet"; btn.disabled = false;
+  }
+}
+
+function updateWalletUI() {
+  const addrEl = document.getElementById("wallet-addr");
+  const roleEl = document.getElementById("wallet-role");
+  // Admin action buttons — only REGISTRAR (role 3) may perform them
+  const isRegistrar = connectedRole === 3;
+  ["btn-register","btn-revoke","btn-setlevel","btn-setdecl"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !isRegistrar;
+  });
+
+  if (!connectedAddress) {
+    addrEl.textContent = "Not connected";
+    roleEl.textContent = "—";
+    roleEl.className = "wallet-role role-none";
+    return;
+  }
+
+  const short = connectedAddress.slice(0, 6) + "..." + connectedAddress.slice(-4);
+  addrEl.textContent = short;
+  if (connectedRole === 3) {
+    roleEl.textContent = "REGISTRAR";
+    roleEl.className = "wallet-role role-registrar";
+  } else if (connectedRole === 0) {
+    roleEl.textContent = "No role registered";
+    roleEl.className = "wallet-role role-none";
+  } else {
+    roleEl.textContent = ROLE_NAMES[connectedRole] || "UNKNOWN";
+    roleEl.className = "wallet-role";
   }
 }
 
@@ -474,10 +531,10 @@ async function loadJudges() {
   listEl.innerHTML = "";
   for (const addr of judgeAddresses) {
     try {
-      const info = await contract.registry(addr);
+      const info  = await contract.registry(addr);
       const terrName = info.active ? await contract.territoryName(info.territoryCode) : "—";
       const nonce = await contract.judgeNonce(addr);
-      const div = document.createElement("div");
+      const div   = document.createElement("div");
       div.className = "judge-row";
       div.innerHTML =
         '<div class="judge-row-left">' +
@@ -505,14 +562,12 @@ async function loadJudges() {
   }
 }
 
-const ROLE_NAMES = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
-
 async function loadLevelMaxValues() {
   const listEl = document.getElementById("level-maxval-list");
   try {
     const rows = [];
     for (let lvl = 1; lvl <= 4; lvl++) {
-      const maxVal = await contract.courtLevelMaxValue(lvl);
+      const maxVal  = await contract.courtLevelMaxValue(lvl);
       const display = maxVal.toString() === "115792089237316195423570985008687907853269984665640564039457584007913129639935"
         ? "unlimited" : "₹" + Number(maxVal).toLocaleString("en-IN");
       rows.push('<div class="judge-row" style="padding:8px 14px;"><div class="judge-row-left">' +
@@ -526,12 +581,13 @@ async function loadLevelMaxValues() {
 }
 
 async function setCourtLevelMax() {
-  const resultEl = document.getElementById("pec-result");
-  resultEl.style.display = "none";
+  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  const btn = document.getElementById("btn-setlevel");
+  btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
     const level  = parseInt(document.getElementById("pec-level").value);
     const maxVal = document.getElementById("pec-maxval").value.trim();
-    const tx = await contract.connect(signers[0]).setCourtLevelMaxValue(level, maxVal);
+    const tx = await contract.connect(connectedSigner).setCourtLevelMaxValue(level, maxVal);
     const receipt = await tx.wait();
     showPecResult("success", "Max Value Updated",
       "<strong>Level " + level + " (" + (COURT_LEVELS[level] || "?") + "):</strong> ₹" +
@@ -540,22 +596,27 @@ async function setCourtLevelMax() {
     loadLevelMaxValues();
   } catch (e) {
     showPecResult("fail", "Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
+  } finally {
+    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Set Court Level Max Value";
   }
 }
 
 async function setDeclaredValue() {
-  const resultEl = document.getElementById("pec-result");
-  resultEl.style.display = "none";
+  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  const btn = document.getElementById("btn-setdecl");
+  btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
     const tokenId = document.getElementById("pec-tokenid").value;
     const val     = document.getElementById("pec-declval").value.trim();
-    const tx = await contract.connect(signers[0]).setParcelDeclaredValue(tokenId, val);
+    const tx = await contract.connect(connectedSigner).setParcelDeclaredValue(tokenId, val);
     const receipt = await tx.wait();
     showPecResult("success", "Declared Value Set",
       "<strong>Token #" + tokenId + ":</strong> ₹" + Number(val).toLocaleString("en-IN") +
       '<span class="tx-hash">Tx: ' + receipt.hash + '</span>');
   } catch (e) {
     showPecResult("fail", "Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
+  } finally {
+    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Set Parcel Declared Value";
   }
 }
 
@@ -563,68 +624,63 @@ function showPecResult(type, title, bodyHtml) {
   const el = document.getElementById("pec-result");
   el.className = "result-card " + (type === "success" ? "success" : "fail");
   el.style.display = "block";
-  document.getElementById("pec-result-icon").innerHTML = '<span class="result-dot"></span>';
   document.getElementById("pec-result-title").textContent = title;
   document.getElementById("pec-result-body").innerHTML = bodyHtml;
   el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 async function registerJudge() {
-  const resultEl = document.getElementById("reg-result");
-  resultEl.style.display = "none";
+  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  const btn = document.getElementById("btn-register");
+  btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
-    const addr    = document.getElementById("reg-address").value.trim();
-    const court   = document.getElementById("reg-court").value.trim();
-    const level   = parseInt(document.getElementById("reg-level").value);
-    const terrKey = document.getElementById("reg-territory").value;
+    const addr     = document.getElementById("reg-address").value.trim();
+    const court    = document.getElementById("reg-court").value.trim();
+    const level    = parseInt(document.getElementById("reg-level").value);
+    const terrKey  = document.getElementById("reg-territory").value;
     const terrCode = TERRITORY_KEYS[terrKey];
-    const from    = document.getElementById("reg-from").value.trim();
-    const until   = document.getElementById("reg-until").value.trim();
-    const role    = parseInt(document.getElementById("reg-role").value);
-    const adminSigner = signers[0];
-    const tx = await contract.connect(adminSigner).registerJudge(addr, court, from, until, level, terrCode, role);
+    const from     = document.getElementById("reg-from").value.trim();
+    const until    = document.getElementById("reg-until").value.trim();
+    const role     = parseInt(document.getElementById("reg-role").value);
+    const tx = await contract.connect(connectedSigner).registerJudge(addr, court, from, until, level, terrCode, role);
     const receipt = await tx.wait();
-    showResult("success", "Signer Registered",
+    showRegResult("success", "Signer Registered",
       "<strong>Address:</strong> " + addr + "<br>" +
       "<strong>Court:</strong> " + court + "<br>" +
-      "<strong>Level:</strong> " + COURT_LEVELS[level] + "<br>" +
+      "<strong>Level:</strong> " + (COURT_LEVELS[level] || level) + "<br>" +
       "<strong>Role:</strong> " + (ROLE_NAMES[role] || role) + "<br>" +
       "<strong>Territory:</strong> " + terrKey +
-      '<span class="tx-hash">Tx: ' + receipt.hash + '</span>'
-    );
+      '<span class="tx-hash">Tx: ' + receipt.hash + '</span>');
     loadJudges();
   } catch (e) {
-    showResult("fail", "Registration Failed",
-      "<strong>Reason:</strong> " + (e.reason || e.message)
-    );
+    showRegResult("fail", "Registration Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
+  } finally {
+    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Register Judge";
   }
 }
 
 async function revokeJudge() {
-  const resultEl = document.getElementById("reg-result");
-  resultEl.style.display = "none";
+  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  const btn = document.getElementById("btn-revoke");
+  btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
     const addr = document.getElementById("reg-address").value.trim();
-    const adminSigner = signers[0];
-    const tx = await contract.connect(adminSigner).revokeJudge(addr);
+    const tx = await contract.connect(connectedSigner).revokeJudge(addr);
     await tx.wait();
-    showResult("success", "Judge Revoked",
-      "<strong>Address:</strong> " + addr + "<br>" +
-      "Authorization has been revoked. The judge can no longer submit freeze orders."
-    );
+    showRegResult("success", "Judge Revoked",
+      "<strong>Address:</strong> " + addr + "<br>Authorization has been revoked.");
     loadJudges();
   } catch (e) {
-    showResult("fail", "Revocation Failed",
-      "<strong>Reason:</strong> " + (e.reason || e.message)
-    );
+    showRegResult("fail", "Revocation Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
+  } finally {
+    btn.className = "btn btn-danger"; btn.disabled = false; btn.textContent = "Revoke Judge";
   }
 }
 
-function showResult(type, title, bodyHtml) {
+function showRegResult(type, title, bodyHtml) {
   const el = document.getElementById("reg-result");
   el.className = "result-card " + (type === "success" ? "success" : "fail");
   el.style.display = "block";
-  document.getElementById("reg-result-icon").innerHTML = '<span class="result-dot"></span>';
   document.getElementById("reg-result-title").textContent = title;
   document.getElementById("reg-result-body").innerHTML    = bodyHtml;
   el.scrollIntoView({ behavior: "smooth", block: "nearest" });

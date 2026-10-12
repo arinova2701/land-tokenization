@@ -6,6 +6,7 @@
 <title>NyayaChain — Court Officer Portal</title>
 <link rel="icon" href="Logo-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<script src="wallet.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -105,6 +106,24 @@ nav {
   font-family: 'Aileron', system-ui, sans-serif;
 }
 
+/* ── Wallet Connect ── */
+.wallet-bar {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  padding: 14px 18px; border-radius: 10px;
+  background: #EFF6FF; border: 1px solid #BFDBFE;
+}
+.wallet-addr {
+  font-family: monospace; font-size: 15px; color: #2563EB; font-weight: 600;
+}
+.wallet-role {
+  font-size: 15px; font-weight: 700; padding: 2px 10px; border-radius: 8px;
+  background: #DBEAFE; color: #1D4ED8;
+}
+.wallet-role.role-none { background: #F1F5F9; color: #94A3B8; }
+.wallet-role.role-judge { background: #DCFCE7; color: #16A34A; }
+.wallet-role.role-clerk { background: #FEF3C7; color: #92400E; }
+.wallet-role.role-registrar { background: #F3E8FF; color: #7C3AED; }
+
 /* ── Form ── */
 .form-group { margin-bottom: 14px; }
 .form-group:last-of-type { margin-bottom: 0; }
@@ -114,35 +133,17 @@ label {
   font-family: 'DM Sans', system-ui, sans-serif;
 }
 .label-note { font-size: 14px; font-weight: 400; color: #94A3B8; margin-left: 6px; }
-input, select {
-  display: block; width: 100%; padding: 12px 16px; font-size: 20px;
+input, select, textarea {
+  display: block; width: 100%; padding: 12px 16px; font-size: 18px;
   font-family: 'DM Sans', system-ui, sans-serif;
   border: 1px solid #D1D5DB; border-radius: 6px;
   outline: none; transition: border-color 0.15s, box-shadow 0.15s;
   background: #fff; color: #0F172A;
 }
-input:focus, select:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+input:focus, select:focus, textarea:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
 input[readonly] { background: #F8FAFC; color: #64748B; cursor: default; }
+textarea { resize: vertical; min-height: 100px; font-family: monospace; font-size: 13px; }
 
-/* ── Signer info ── */
-.signer-status { margin-top: 8px; }
-.status-registered {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 16px; font-weight: 600; color: #16A34A;
-}
-.status-registered::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #16A34A; display: block; }
-.status-unregistered {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 16px; font-weight: 600; color: #DC2626;
-}
-.status-unregistered::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #DC2626; display: block; }
-.signer-info-box {
-  margin-top: 12px; background: #F0FDF4; border: 1px solid #BBF7D0;
-  border-radius: 8px; padding: 14px 16px; display: none;
-}
-.signer-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
-.signer-info-row { font-size: 18px; color: #475569; }
-.signer-info-row span { font-weight: 600; color: #0F172A; }
 .property-info-note {
   margin-top: 6px; font-size: 16px; color: #64748B;
   border-left: 3px solid #CBD5E1;
@@ -157,11 +158,49 @@ input[readonly] { background: #F8FAFC; color: #64748B; cursor: default; }
   display: inline-flex; align-items: center; gap: 8px;
   padding: 13px 32px; border-radius: 8px; font-size: 20px; font-weight: 600;
   font-family: 'Aileron', system-ui, sans-serif; cursor: pointer; transition: all 0.15s;
+  border: 2px solid transparent;
 }
-.btn-primary { background: #2563EB; color: #fff; border: 2px solid #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
-.btn-primary:hover { background: #1D4ED8; border-color: #1D4ED8; }
-.btn-gold { background: transparent; color: #78350F; border: 2px solid #C4956A; }
-.btn-gold:hover { background: #FEF3C7; border-color: #A37550; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: #2563EB; color: #fff; border-color: #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+.btn-primary:not(:disabled):hover { background: #1D4ED8; border-color: #1D4ED8; }
+.btn-gold { background: transparent; color: #78350F; border-color: #C4956A; }
+.btn-gold:not(:disabled):hover { background: #FEF3C7; border-color: #A37550; }
+.btn-outline { background: transparent; color: #475569; border-color: #CBD5E1; }
+.btn-outline:not(:disabled):hover { background: #F1F5F9; }
+.btn-green { background: #16A34A; color: #fff; border-color: #16A34A; }
+.btn-green:not(:disabled):hover { background: #15803D; border-color: #15803D; }
+.btn-waiting { background: #64748B; color: #fff; border-color: #64748B; cursor: wait; }
+
+/* ── Signature Status ── */
+.sig-status-box {
+  margin-top: 14px; background: #F8FAFC; border: 1px solid #E2E8F0;
+  border-radius: 8px; padding: 14px 16px;
+}
+.sig-status-title { font-size: 16px; font-weight: 700; color: #374151; margin-bottom: 10px; }
+.sig-status-row { font-size: 16px; color: #475569; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+.sig-status-row .sig-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sig-status-row .sig-dot.done { background: #16A34A; }
+.sig-status-row .sig-dot.needed { background: #D1D5DB; border: 2px solid #D1D5DB; }
+.sig-threshold { font-size: 14px; color: #94A3B8; margin-top: 6px; }
+
+/* ── Pre-check results ── */
+.precheck-box {
+  margin-top: 12px; background: #FFFBEB; border: 1px solid #FDE68A;
+  border-radius: 8px; padding: 14px 16px; display: none;
+}
+.precheck-title { font-size: 15px; font-weight: 700; color: #92400E; margin-bottom: 8px; }
+.precheck-row { font-size: 14px; color: #374151; margin-bottom: 3px; display: flex; gap: 6px; }
+.precheck-row .pc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.precheck-row .pc-dot.pass { background: #16A34A; }
+.precheck-row .pc-dot.fail { background: #DC2626; }
+
+/* ── Export / Import boxes ── */
+.export-box, .import-box {
+  margin-top: 16px; padding: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;
+}
+.export-box-title, .import-box-title {
+  font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 10px;
+}
 
 /* ── Steps ── */
 .steps-card { display: none; }
@@ -174,7 +213,6 @@ input[readonly] { background: #F8FAFC; color: #64748B; cursor: default; }
   width: 20px; flex-shrink: 0; display: flex;
   align-items: center; justify-content: center; margin-top: 3px;
 }
-/* CSS circle indicators — no unicode */
 .step-dot {
   display: inline-block; width: 10px; height: 10px; border-radius: 50%;
 }
@@ -222,7 +260,6 @@ footer {
   body { padding-top: 80px; }
   .page-content { padding: 16px 16px 48px; }
   .portal-banner { padding: 16px 20px; }
-  .signer-info-grid { grid-template-columns: 1fr; }
   .btn-row { flex-direction: column; }
   .btn { width: 100%; justify-content: center; }
 }
@@ -255,28 +292,29 @@ footer {
 <!-- ── Portal Banner ── -->
 <div class="portal-banner">
   <div class="banner-title">Court Officer Portal</div>
-  <div class="banner-sub">Submit authenticated freeze and unfreeze orders to the on-chain registry</div>
+  <div class="banner-sub">Submit authenticated freeze and unfreeze orders — multi-signer export/import flow</div>
 </div>
 
 <!-- ── Page Content ── -->
 <div class="page-content">
 
-  <!-- Signer / Account Card -->
+  <!-- Wallet Connect Card -->
   <div class="card">
-    <div class="card-title">Select Court Officer</div>
-    <div class="form-group">
-      <label for="court-signer">Submit As</label>
-      <select id="court-signer" onchange="updateSignerDisplay()"></select>
-      <div class="signer-status" id="signer-status"></div>
-      <div class="signer-info-box" id="signer-info">
-        <div class="signer-info-grid" id="signer-info-grid"></div>
-      </div>
+    <div class="card-title">Wallet</div>
+    <div class="wallet-bar" id="wallet-bar">
+      <span id="wallet-addr" style="font-family:monospace;font-size:15px;color:#94A3B8;">Not connected</span>
+      <span class="wallet-role role-none" id="wallet-role">—</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-primary" id="btn-connect" onclick="connectWallet()" style="padding:9px 22px;font-size:17px;">Connect Wallet</button>
     </div>
+    <p style="font-size:15px;color:#94A3B8;margin-top:4px;">
+      Use a different Chrome profile per role. The judge signs first, then exports the order JSON for the co-signer to import.
+    </p>
   </div>
 
   <!-- Order Form Card -->
   <div class="card">
-    <div class="card-title">Submit Court Order</div>
+    <div class="card-title">Build Order</div>
 
     <div class="form-group">
       <label for="court-tokenid">Property Token</label>
@@ -299,79 +337,106 @@ footer {
     </div>
 
     <div class="form-group">
-      <label for="court-nonce">Nonce <span class="label-note">auto-filled — next expected for selected judge</span></label>
+      <label for="court-nonce">Nonce <span class="label-note">auto-filled — next expected for connected judge</span></label>
       <input type="text" id="court-nonce" readonly value="0">
     </div>
 
     <div class="form-group">
-      <label for="court-cosigner">Co-Signer <span class="label-note">CLERK or REGISTRAR — required for quorum</span></label>
-      <select id="court-cosigner" onchange="updateCoSignerDisplay()"></select>
-      <div class="signer-status" id="cosigner-status"></div>
+      <label>Action</label>
+      <select id="court-action">
+        <option value="freeze">Freeze</option>
+        <option value="unfreeze">Unfreeze</option>
+      </select>
+    </div>
+
+    <!-- Signature Status -->
+    <div class="sig-status-box" id="sig-status-box" style="display:none;">
+      <div class="sig-status-title">Signature Status</div>
+      <div id="sig-list"></div>
+      <div class="sig-threshold" id="sig-threshold"></div>
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="submitOrder('freeze')">Sign &amp; Submit Freeze</button>
-      <button class="btn btn-gold" onclick="submitOrder('unfreeze')">Sign &amp; Submit Unfreeze</button>
+      <button class="btn btn-primary" id="btn-sign" onclick="signOrder()" disabled>
+        Sign Order
+      </button>
     </div>
   </div>
 
-  <!-- Verification Steps Card -->
-  <!-- Steps 1–5 are client-side. Steps 6–15 map to on-chain checks (CHECK_* bitmask bits).
-       The revert-reason → failing-step mapping below is a CLIENT-SIDE MAPPING only. -->
-  <div class="card steps-card" id="steps-card">
-    <div class="card-title">Verification Progress</div>
-    <div class="step-row pending" id="step-expiry">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">1. Check order expiry</div>
+  <!-- Export Card -->
+  <div class="card" id="export-card" style="display:none;">
+    <div class="card-title">Export Order</div>
+    <p style="font-size:16px;color:#64748B;margin-bottom:12px;">
+      Copy this JSON and send it to the co-signer. They will import it on their court portal in their own browser profile.
+    </p>
+    <div class="export-box">
+      <textarea id="export-json" rows="6" readonly></textarea>
     </div>
-    <div class="step-row pending" id="step-replay">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">2. Check replay (duplicate order)</div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="copyExport()">Copy to Clipboard</button>
     </div>
-    <div class="step-row pending" id="step-hash">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">3. Hash order content (case + token + expiry + nonce)</div>
+  </div>
+
+  <!-- Import Card -->
+  <div class="card">
+    <div class="card-title">Import Order</div>
+    <p style="font-size:16px;color:#64748B;margin-bottom:12px;">
+      If you are the co-signer, paste the order JSON exported by the judge here.
+    </p>
+    <div class="import-box">
+      <textarea id="import-json" rows="6" placeholder="Paste exported order JSON here..."></textarea>
     </div>
-    <div class="step-row pending" id="step-sign">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">4. Sign hash (judge + co-signer)</div>
+    <div id="import-validation" style="display:none;margin-top:8px;font-size:15px;"></div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="importOrder()">Import &amp; Validate</button>
     </div>
-    <div class="step-row pending" id="step-preview">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">5. Pre-validate via getOrderChecks (on-chain view)</div>
+  </div>
+
+  <!-- Submit Card -->
+  <div class="card" id="submit-card" style="display:none;">
+    <div class="card-title">Submit to Chain</div>
+
+    <!-- Pre-check results -->
+    <div class="precheck-box" id="precheck-box">
+      <div class="precheck-title">Pre-submission Check (getOrderChecks view)</div>
+      <div id="precheck-rows"></div>
     </div>
-    <div class="step-row pending" id="step-submit">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">6. Submit to contract</div>
+
+    <div class="sig-status-box" id="submit-sig-status" style="margin-top:14px;">
+      <div class="sig-status-title">Ready to Submit</div>
+      <div id="submit-sig-list"></div>
     </div>
-    <div class="step-row pending" id="step-recover">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">7. Recover all signers via ECDSA (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-nodupe">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">8. Check no duplicate signers (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-registry">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">9. Check CourtKeyRegistry — all signers active (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-validity">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">10. Check key validity window (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-jurisdiction">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">11. Check territorial jurisdiction (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-quorum">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">12. Check quorum: JUDGE + CLERK/REGISTRAR present (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-nonce">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">13. Check nonce sequence (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-pecuniary">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">14. Check pecuniary jurisdiction: declared value ≤ court limit (on-chain)</div>
-    </div>
-    <div class="step-row pending" id="step-result">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">15. Result</div>
+
+    <!-- Verification Steps -->
+    <div class="steps-card" id="steps-card">
+      <div class="card-title" style="margin-top:20px;">Verification Progress</div>
+      <div class="step-row pending" id="step-precheck">
+        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">1. Pre-validate via getOrderChecks (on-chain view)</div>
+      </div>
+      <div class="step-row pending" id="step-submit">
+        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">2. Submit to contract</div>
+      </div>
+      <div class="step-row pending" id="step-confirm">
+        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">3. Waiting for block confirmation (~2s on Besu)...</div>
+      </div>
+      <div class="step-row pending" id="step-result">
+        <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">4. Result</div>
+      </div>
     </div>
 
     <div class="result-card" id="court-result" style="margin-top:20px;">
       <div class="result-header">
-        <span id="result-icon"></span>
+        <span class="result-dot"></span>
         <span class="result-header-title" id="result-title"></span>
       </div>
       <div class="result-body" id="result-body"></div>
+    </div>
+
+    <div class="btn-row" style="margin-top:20px;">
+      <button class="btn btn-green" id="btn-submit" onclick="submitOrder()" disabled>
+        Submit Order
+      </button>
+      <button class="btn btn-outline" onclick="resetFlow()">Start Over</button>
     </div>
   </div>
 
@@ -400,96 +465,56 @@ const ABI = [
   "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
   "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
   "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
-  "function setTerritory(bytes32 code, string name, bytes32 parent)",
-  "function registerProperty(uint256 tokenId, bytes32 territory, uint256 declaredValue)",
-  "function setParcelDeclaredValue(uint256 tokenId, uint256 value)",
-  "function setCourtLevelMaxValue(uint8 courtLevel, uint256 maxValue)",
-  "function setQuorumThreshold(uint256 threshold)",
-  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory, uint8 role)",
-  "function revokeJudge(address signer)",
   "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory)",
-  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
-  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
-  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)"
 ];
 
-const COURT_LEVELS = { 1: "District Munsif", 2: "Sub Court", 3: "District Court", 4: "High Court" };
-const TERRITORY_KEYS = {
-  vellore: null, chennai: null, tamil_nadu: null, kadapa: null, andhra_pradesh: null
+const CHECK = {
+  EXPIRY: 0, REPLAY: 1, RECOVER: 2, NO_DUPE: 3,
+  REGISTRY: 4, VALIDITY: 5, JURISDICTION: 6,
+  QUORUM_JUDGE: 7, QUORUM_COSIG: 8, NONCE: 9, PECUNIARY: 10, FROZEN_STATE: 11
 };
+const CHECK_NAMES = [
+  "Order not expired", "No replay", "ECDSA recovery",
+  "No duplicate signers", "Signers in registry", "Keys within validity window",
+  "Territorial jurisdiction", "JUDGE present", "CLERK/REGISTRAR present",
+  "Nonce sequential", "Pecuniary limit", "Frozen state"
+];
 
-let provider, contract, signers, config;
+const ROLE_NAMES = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
+
+let readProvider, contract, config;
+let connectedSigner = null;    // MetaMask signer
+let connectedAddress = null;
+let connectedRole = 0;
+let quorumThreshold = 2;
+
+// Current order being built
+let currentOrder = null;  // { tokenId, caseNumber, orderExpiry, nonce, action, orderHash, signatures: [{signer, role, sig}] }
 
 async function init() {
   const connBar = document.getElementById("connBar");
   try {
-    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-    const network = await provider.getNetwork();
+    readProvider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const network = await readProvider.getNetwork();
     const resp = await fetch("config.json");
     config = await resp.json();
-    contract = new ethers.Contract(config.contractAddress, ABI, provider);
-    const accounts = await provider.listAccounts();
-    signers = accounts;
-
-    for (const key of Object.keys(TERRITORY_KEYS)) {
-      TERRITORY_KEYS[key] = ethers.keccak256(ethers.toUtf8Bytes(key));
-    }
+    contract = new ethers.Contract(config.contractAddress, ABI, readProvider);
+    quorumThreshold = Number(await contract.quorumThreshold());
 
     const short = config.contractAddress.slice(0, 10) + "..." + config.contractAddress.slice(-6);
-    connBar.textContent = "Connected — Chain ID: " + network.chainId + " | Contract: " + short;
+    connBar.textContent = "Chain ID: " + network.chainId + " | Contract: " + short;
     document.getElementById("navDot").classList.remove("disconnected");
     document.getElementById("navStatusText").textContent = "Connected";
     document.getElementById("navStatus").classList.add("connected");
 
-    const select = document.getElementById("court-signer");
-    select.innerHTML = "";
-    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
-      const addr = accounts[i].address;
-      let label = addr.slice(0, 10) + "..." + addr.slice(-6);
-      if (addr.toLowerCase() === config.adminAddress.toLowerCase())        label += " (Registrar)";
-      else if (addr.toLowerCase() === config.judgeAddress.toLowerCase())   label += " (Judge — Vellore)";
-      else if (addr.toLowerCase() === config.outsideJudgeAddress.toLowerCase()) label += " (Judge — Kadapa, AP)";
-      else label += " (Unauthorized)";
-      const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = label;
-      select.appendChild(opt);
-    }
-    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
-      if (accounts[i].address.toLowerCase() === config.judgeAddress.toLowerCase()) {
-        select.value = i;
-        break;
-      }
-    }
-
-    // Populate co-signer dropdown (CLERK/REGISTRAR accounts)
-    const cosignSelect = document.getElementById("court-cosigner");
-    cosignSelect.innerHTML = "";
-    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
-      const addr = accounts[i].address;
-      let label = addr.slice(0, 10) + "..." + addr.slice(-6);
-      if (addr.toLowerCase() === config.adminAddress.toLowerCase())        label += " (Registrar — co-signer)";
-      else if (addr.toLowerCase() === config.judgeAddress.toLowerCase())   label += " (Judge — primary)";
-      else if (addr.toLowerCase() === config.outsideJudgeAddress.toLowerCase()) label += " (Judge — Kadapa)";
-      else label += " (Unregistered)";
-      const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = label;
-      cosignSelect.appendChild(opt);
-    }
-    // Default co-signer to admin (registrar)
-    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
-      if (accounts[i].address.toLowerCase() === config.adminAddress.toLowerCase()) {
-        cosignSelect.value = i;
-        break;
-      }
-    }
-
-    updateSignerDisplay();
-    updateCoSignerDisplay();
     updatePropertyDisplay();
+
+    // Register wallet change listener
+    NyayaWallet.onWalletChange(() => {
+      connectedSigner = null; connectedAddress = null; connectedRole = 0;
+      updateWalletUI();
+    });
   } catch (e) {
     connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
     connBar.className = "conn-bar error";
@@ -498,55 +523,63 @@ async function init() {
   }
 }
 
-async function updateSignerDisplay() {
-  const idx = document.getElementById("court-signer").value;
-  const addr = signers[idx].address;
-  const statusEl = document.getElementById("signer-status");
-  const infoEl   = document.getElementById("signer-info");
-  const infoGrid = document.getElementById("signer-info-grid");
-  const nonceEl  = document.getElementById("court-nonce");
+async function connectWallet() {
+  const btn = document.getElementById("btn-connect");
+  btn.textContent = "Connecting..."; btn.disabled = true;
   try {
-    const info = await contract.registry(addr);
-    const currentNonce = await contract.judgeNonce(addr);
-    nonceEl.value = currentNonce.toString();
-    if (info.active) {
-      const terrName = await contract.territoryName(info.territoryCode);
-      statusEl.innerHTML = '<span class="status-registered">Registry status: REGISTERED</span>';
-      infoEl.style.display = "block";
-      infoGrid.innerHTML =
-        '<div class="signer-info-row">Court &nbsp;<span>' + info.courtName + '</span></div>' +
-        '<div class="signer-info-row">Level &nbsp;<span>' + COURT_LEVELS[info.courtLevel] + '</span></div>' +
-        '<div class="signer-info-row">Territory &nbsp;<span>' + terrName + '</span></div>' +
-        '<div class="signer-info-row">Current Nonce &nbsp;<span>' + currentNonce.toString() + '</span></div>';
-    } else {
-      statusEl.innerHTML = '<span class="status-unregistered">Registry status: NOT REGISTERED</span>';
-      infoEl.style.display = "none";
+    const { provider, signer, address } = await NyayaWallet.connectWallet();
+    connectedSigner = signer;
+    connectedAddress = address;
+    // Read role from registry
+    try {
+      const info = await contract.registry(address);
+      connectedRole = info.active ? Number(info.role) : 0;
+    } catch (_) { connectedRole = 0; }
+
+    // Update nonce if judge
+    if (connectedRole === 1) {
+      const nonce = await contract.judgeNonce(address);
+      document.getElementById("court-nonce").value = nonce.toString();
     }
+
+    updateWalletUI();
   } catch (e) {
-    statusEl.innerHTML = '<span class="status-unregistered">Registry status: NOT REGISTERED</span>';
-    infoEl.style.display = "none";
-    nonceEl.value = "0";
+    alert("Wallet connection failed: " + (e.message || e));
+  } finally {
+    btn.textContent = "Connect Wallet"; btn.disabled = false;
   }
 }
 
-async function updateCoSignerDisplay() {
-  const idx    = document.getElementById("court-cosigner").value;
-  const addr   = signers[idx].address;
-  const statusEl = document.getElementById("cosigner-status");
-  try {
-    const info = await contract.registry(addr);
-    const roleNames = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
-    if (info.active) {
-      statusEl.innerHTML = '<span class="status-registered">Co-signer: ' + (roleNames[info.role] || "UNKNOWN") + ' — REGISTERED</span>';
-    } else {
-      statusEl.innerHTML = '<span class="status-unregistered">Co-signer: NOT REGISTERED</span>';
-    }
-  } catch (_) {
-    statusEl.innerHTML = '<span class="status-unregistered">Co-signer: NOT REGISTERED</span>';
+function updateWalletUI() {
+  const addrEl  = document.getElementById("wallet-addr");
+  const roleEl  = document.getElementById("wallet-role");
+  const signBtn = document.getElementById("btn-sign");
+
+  if (!connectedAddress) {
+    addrEl.textContent = "Not connected";
+    roleEl.textContent = "—";
+    roleEl.className = "wallet-role role-none";
+    signBtn.disabled = true;
+    return;
+  }
+
+  const short = connectedAddress.slice(0, 6) + "..." + connectedAddress.slice(-4);
+  addrEl.textContent = short;
+
+  if (connectedRole === 0) {
+    roleEl.textContent = "No role registered";
+    roleEl.className = "wallet-role role-none";
+    signBtn.disabled = true;
+  } else {
+    roleEl.textContent = ROLE_NAMES[connectedRole] || "UNKNOWN";
+    roleEl.className = "wallet-role role-" + (connectedRole === 1 ? "judge" : connectedRole === 2 ? "clerk" : "registrar");
+    // Only JUDGE can initiate; CLERK/REGISTRAR can co-sign via import
+    signBtn.disabled = connectedRole !== 1;
   }
 }
 
 async function updatePropertyDisplay() {
+  if (!contract) return;
   const tokenId = document.getElementById("court-tokenid").value;
   const infoEl  = document.getElementById("property-info");
   try {
@@ -561,206 +594,357 @@ async function updatePropertyDisplay() {
       infoEl.className = "property-info-note free-note";
       infoEl.textContent = "Territory: " + terrName + " \u00b7 Status: not frozen";
     }
+  } catch (e) { infoEl.style.display = "none"; }
+}
+
+// ── Sign Order (Judge) ──────────────────────────────────────────────────────
+
+async function signOrder() {
+  if (!connectedSigner || connectedRole !== 1) {
+    alert("Connect a wallet with JUDGE role to sign."); return;
+  }
+
+  const tokenId    = document.getElementById("court-tokenid").value;
+  const caseNumber = document.getElementById("court-case").value.trim();
+  const expiryMins = parseInt(document.getElementById("court-expiry").value.trim()) || 60;
+  const nonce      = BigInt(document.getElementById("court-nonce").value.trim() || "0");
+  const action     = document.getElementById("court-action").value;
+
+  if (!caseNumber) { alert("Enter a case number."); return; }
+
+  const block       = await readProvider.getBlock("latest");
+  const orderExpiry = block.timestamp + (expiryMins * 60);
+  const orderData   = ethers.solidityPacked(
+    ["string", "uint256", "uint256", "string", "uint256"],
+    [caseNumber, tokenId, orderExpiry, action, nonce]
+  );
+  const orderHash = ethers.keccak256(orderData);
+
+  const btn = document.getElementById("btn-sign");
+  btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Signing...";
+
+  let sig;
+  try {
+    sig = await NyayaWallet.signOrderHash(connectedSigner, orderHash);
   } catch (e) {
-    infoEl.style.display = "none";
+    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Sign Order";
+    alert("Signing failed: " + (e.message || e)); return;
+  }
+  btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Sign Order";
+
+  currentOrder = {
+    tokenId, caseNumber, orderExpiry, nonce: Number(nonce), action, orderHash,
+    signatures: [{ signer: connectedAddress, role: connectedRole, sig }]
+  };
+
+  renderSigStatus();
+  renderExport();
+  document.getElementById("export-card").style.display = "block";
+  checkReadyToSubmit();
+}
+
+// ── Import Order ────────────────────────────────────────────────────────────
+
+async function importOrder() {
+  const raw = document.getElementById("import-json").value.trim();
+  const validationEl = document.getElementById("import-validation");
+
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (_) { showValidation(validationEl, false, "Invalid JSON — cannot parse."); return; }
+
+  const required = ["tokenId","caseNumber","orderExpiry","nonce","action","orderHash","signatures"];
+  for (const k of required) {
+    if (!(k in parsed)) { showValidation(validationEl, false, "Missing field: " + k); return; }
+  }
+
+  // Re-derive order hash from fields and compare
+  const derivedData = ethers.solidityPacked(
+    ["string", "uint256", "uint256", "string", "uint256"],
+    [parsed.caseNumber, parsed.tokenId, parsed.orderExpiry, parsed.action, parsed.nonce]
+  );
+  const derivedHash = ethers.keccak256(derivedData);
+  if (derivedHash.toLowerCase() !== parsed.orderHash.toLowerCase()) {
+    showValidation(validationEl, false, "Order hash does not match order fields — import rejected."); return;
+  }
+
+  // Check for duplicate signers
+  const signerSet = new Set();
+  for (const s of parsed.signatures) {
+    const lower = (s.signer || "").toLowerCase();
+    if (signerSet.has(lower)) { showValidation(validationEl, false, "Duplicate signer: " + s.signer); return; }
+    signerSet.add(lower);
+  }
+
+  // If current user is already among signers, warn
+  if (connectedAddress && signerSet.has(connectedAddress.toLowerCase())) {
+    showValidation(validationEl, false, "You have already signed this order."); return;
+  }
+
+  currentOrder = {
+    tokenId: parsed.tokenId,
+    caseNumber: parsed.caseNumber,
+    orderExpiry: parsed.orderExpiry,
+    nonce: parsed.nonce,
+    action: parsed.action,
+    orderHash: parsed.orderHash,
+    signatures: parsed.signatures.map(s => ({ signer: s.signer, role: Number(s.role), sig: s.sig }))
+  };
+
+  showValidation(validationEl, true,
+    "Valid order for Token #" + parsed.tokenId + " — " + parsed.action.toUpperCase() +
+    " | Case: " + parsed.caseNumber);
+
+  renderSigStatus();
+  checkReadyToSubmit();
+
+  // If connected wallet is a co-signer role and not yet signed → offer to co-sign
+  if (connectedSigner && (connectedRole === 2 || connectedRole === 3)) {
+    await coSign();
+  } else if (connectedSigner && connectedRole === 0) {
+    showValidation(validationEl, false, "Connected wallet has no registered role — cannot co-sign.");
+  } else if (!connectedSigner) {
+    showValidation(validationEl, true, "Import validated. Connect a CLERK or REGISTRAR wallet to co-sign.");
   }
 }
 
-// CHECK_* bitmask bit positions (must match CourtKeyRegistry.sol constants)
-const CHECK = {
-  EXPIRY: 0, REPLAY: 1, RECOVER: 2, NO_DUPE: 3,
-  REGISTRY: 4, VALIDITY: 5, JURISDICTION: 6,
-  QUORUM_JUDGE: 7, QUORUM_COSIG: 8, NONCE: 9, PECUNIARY: 10, FROZEN_STATE: 11
-};
+async function coSign() {
+  if (!connectedSigner) { alert("Connect wallet to co-sign."); return; }
+  if (connectedRole !== 2 && connectedRole !== 3) { alert("Only CLERK or REGISTRAR can co-sign."); return; }
+  if (!currentOrder) { alert("No order loaded."); return; }
 
-function checkBit(bitmask, bit) { return ((Number(bitmask) >> bit) & 1) === 1; }
+  // Check for duplicate
+  const alreadySigned = currentOrder.signatures.some(
+    s => s.signer.toLowerCase() === connectedAddress.toLowerCase()
+  );
+  if (alreadySigned) { alert("You have already signed this order."); return; }
 
-async function submitOrder(action) {
-  const stepsCard = document.getElementById("steps-card");
-  const resultEl  = document.getElementById("court-result");
-  stepsCard.style.display = "block";
-  resultEl.style.display = "none";
+  let sig;
+  try {
+    sig = await NyayaWallet.signOrderHash(connectedSigner, currentOrder.orderHash);
+  } catch (e) { alert("Co-signing failed: " + (e.message || e)); return; }
 
-  // Reset all steps to pending
-  const allSteps = ["expiry","replay","hash","sign","preview","submit",
-                    "recover","nodupe","registry","validity","jurisdiction",
-                    "quorum","nonce","pecuniary","result"];
-  allSteps.forEach(s => {
-    const el = document.getElementById("step-" + s);
-    if (!el) return;
-    el.className = "step-row pending";
-    el.innerHTML = '<div class="step-icon"><span class="step-dot"></span></div><div class="step-body">' + (el.querySelector('.step-body') ? el.querySelector('.step-body').textContent : '') + '</div>';
-  });
+  currentOrder.signatures.push({ signer: connectedAddress, role: connectedRole, sig });
 
-  const judgeIdx     = document.getElementById("court-signer").value;
-  const cosignIdx    = document.getElementById("court-cosigner").value;
-  const judge        = signers[judgeIdx];
-  const cosigner     = signers[cosignIdx];
-  const tokenId      = document.getElementById("court-tokenid").value;
-  const caseNumber   = document.getElementById("court-case").value.trim();
-  const expiryMins   = parseInt(document.getElementById("court-expiry").value.trim()) || 60;
-  const nonce        = BigInt(document.getElementById("court-nonce").value.trim() || "0");
-  const actionLabel  = action === "freeze" ? "FREEZE" : "UNFREEZE";
+  renderSigStatus();
+  renderExport();
+  document.getElementById("export-card").style.display = "block";
+  checkReadyToSubmit();
+}
 
-  const block       = await provider.getBlock("latest");
-  const orderExpiry = block.timestamp + (expiryMins * 60);
+// ── Submit Order ────────────────────────────────────────────────────────────
+
+async function checkReadyToSubmit() {
+  if (!currentOrder) { document.getElementById("submit-card").style.display = "none"; return; }
+
+  const hasJudge = currentOrder.signatures.some(s => s.role === 1);
+  const hasCosig = currentOrder.signatures.some(s => s.role === 2 || s.role === 3);
+  const meetsThreshold = currentOrder.signatures.length >= quorumThreshold;
+  const ready = hasJudge && hasCosig && meetsThreshold;
+
+  document.getElementById("submit-card").style.display = "block";
+  document.getElementById("btn-submit").disabled = !ready;
+
+  // Show submit sig status
+  const submitSigList = document.getElementById("submit-sig-list");
+  submitSigList.innerHTML = "";
+  for (const s of currentOrder.signatures) {
+    const row = document.createElement("div");
+    row.className = "sig-status-row";
+    row.innerHTML = '<span class="sig-dot done"></span>' +
+      '<span>' + s.signer.slice(0,10) + "..." + s.signer.slice(-6) +
+      ' (' + (ROLE_NAMES[s.role] || "?") + ')</span>';
+    submitSigList.appendChild(row);
+  }
+
+  if (ready) {
+    // Run pre-check
+    await runPrecheck();
+  }
+}
+
+async function runPrecheck() {
+  const box = document.getElementById("precheck-box");
+  const rowsEl = document.getElementById("precheck-rows");
+  box.style.display = "block";
+  rowsEl.innerHTML = '<div style="font-size:13px;color:#94A3B8;">Running checks...</div>';
 
   try {
-    // Step 1: expiry (client-side preview)
-    setStep("expiry", "pass", "1. Order expires: " + new Date(Number(orderExpiry) * 1000).toLocaleString());
-    // Step 2: replay (will be verified on-chain)
-    setStep("replay", "pass", "2. Replay check queued for on-chain verification");
-
-    // Step 3: hash
-    const orderData = ethers.solidityPacked(
-      ["string", "uint256", "uint256", "string", "uint256"],
-      [caseNumber, tokenId, orderExpiry, action, nonce]
+    const sigs = currentOrder.signatures.map(s => s.sig);
+    const bitmask = await contract.getOrderChecks(
+      currentOrder.tokenId, currentOrder.orderHash,
+      currentOrder.orderExpiry, currentOrder.nonce, sigs
     );
-    const orderHash = ethers.keccak256(orderData);
-    setStep("hash", "pass", "3. Hash (token #" + tokenId + " nonce=" + nonce + "): " + orderHash.slice(0, 18) + "...");
-
-    // Step 4: multi-signer signing
-    const judgeSig   = await judge.signMessage(ethers.getBytes(orderHash));
-    const cosignSig  = await cosigner.signMessage(ethers.getBytes(orderHash));
-    const signatures = [judgeSig, cosignSig];
-    setStep("sign", "pass",
-      "4. Signed by judge " + judge.address.slice(0,10) + "... + co-signer " + cosigner.address.slice(0,10) + "...");
-
-    // Step 5: pre-validate via getOrderChecks (on-chain view call — Step 4 feature)
-    let previewBitmask = 0n;
-    try {
-      previewBitmask = await contract.getOrderChecks(tokenId, orderHash, orderExpiry, nonce, signatures);
-      const allOnChainChecks = (1 << 11) - 1; // bits 0-10 for freeze
-      const allPass = (Number(previewBitmask) & allOnChainChecks) === allOnChainChecks;
-      setStep("preview", allPass ? "pass" : "fail",
-        "5. Pre-validate bitmask: 0x" + Number(previewBitmask).toString(16) +
-        (allPass ? " — all on-chain checks predict PASS" : " — one or more checks predict FAIL"));
-    } catch (_) {
-      setStep("preview", "pending", "5. Pre-validate: view call unavailable");
+    const num = Number(bitmask);
+    // For freeze: bits 0-10 relevant; for unfreeze: bit 11 too
+    const maxBit = currentOrder.action === "unfreeze" ? 12 : 11;
+    let html = "";
+    for (let i = 0; i < maxBit; i++) {
+      const pass = ((num >> i) & 1) === 1;
+      html += '<div class="precheck-row"><span class="pc-dot ' + (pass ? 'pass' : 'fail') + '"></span>' +
+        '<span>' + CHECK_NAMES[i] + ': ' + (pass ? 'PASS' : 'FAIL') + '</span></div>';
     }
+    rowsEl.innerHTML = html;
+    document.getElementById("btn-submit").disabled = false;
+  } catch (e) {
+    rowsEl.innerHTML = '<div style="font-size:13px;color:#DC2626;">getOrderChecks failed: ' + (e.message || e) + '</div>';
+  }
+}
 
-    // Step 6: submit
-    setStep("submit", "pass", "6. Submitting " + actionLabel + " order (nonce=" + nonce + ")...");
+async function submitOrder() {
+  if (!currentOrder) return;
+  if (!connectedSigner) { alert("Connect a wallet to submit."); return; }
+
+  const stepsCard = document.getElementById("steps-card");
+  stepsCard.style.display = "block";
+  document.getElementById("court-result").style.display = "none";
+
+  const sigs = currentOrder.signatures.map(s => s.sig);
+  const action = currentOrder.action;
+
+  setStep("precheck", "pass", "1. Pre-validate: checks run");
+
+  const submitBtn = document.getElementById("btn-submit");
+  submitBtn.className = "btn btn-waiting"; submitBtn.disabled = true; submitBtn.textContent = "Waiting for block...";
+
+  try {
+    setStep("submit", "pass", "2. Submitting " + action.toUpperCase() + " (nonce=" + currentOrder.nonce + ")...");
 
     let tx;
     if (action === "freeze") {
-      tx = await contract.connect(judge).submitFreezeOrder(
-        tokenId, caseNumber, orderHash, orderExpiry, nonce, signatures
+      tx = await contract.connect(connectedSigner).submitFreezeOrder(
+        currentOrder.tokenId, currentOrder.caseNumber, currentOrder.orderHash,
+        currentOrder.orderExpiry, currentOrder.nonce, sigs
       );
     } else {
-      tx = await contract.connect(judge).submitUnfreezeOrder(
-        tokenId, caseNumber, orderHash, orderExpiry, nonce, signatures
+      tx = await contract.connect(connectedSigner).submitUnfreezeOrder(
+        currentOrder.tokenId, currentOrder.caseNumber, currentOrder.orderHash,
+        currentOrder.orderExpiry, currentOrder.nonce, sigs
       );
     }
-    const receipt = await tx.wait();
 
-    // Read stored bitmask from history entry (Step 4)
+    setStep("confirm", "pass", "3. Waiting for block confirmation...");
+    const receipt = await tx.wait();
+    setStep("confirm", "pass", "3. Confirmed in block #" + receipt.blockNumber);
+
     let storedBitmask = 0n;
     try {
-      const histLen = await contract.getFreezeHistoryLength(tokenId);
-      const lastIdx = Number(histLen) - 1;
-      const entry   = await contract.getFreezeHistoryEntry(tokenId, lastIdx);
+      const histLen = await contract.getFreezeHistoryLength(currentOrder.tokenId);
+      const entry = await contract.getFreezeHistoryEntry(currentOrder.tokenId, Number(histLen) - 1);
       storedBitmask = entry.checksBitmask;
     } catch (_) {}
 
-    // Mark on-chain steps from stored bitmask
-    setStep("recover",      "pass", "7. All signers recovered via ECDSA (bit " + checkBit(storedBitmask, CHECK.RECOVER) + ")");
-    setStep("nodupe",       "pass", "8. No duplicate signers");
-    setStep("registry",     "pass", "9. All signers active in CourtKeyRegistry");
-    setStep("validity",     "pass", "10. Keys within validity window");
-    setStep("jurisdiction", "pass", "11. Territorial jurisdiction satisfied");
-    setStep("quorum",       "pass", "12. Quorum: JUDGE + CLERK/REGISTRAR present");
-    setStep("nonce",        "pass", "13. Nonce " + nonce + " accepted — next: " + (nonce + 1n));
-    setStep("pecuniary",    "pass", "14. Declared value within court pecuniary limit");
-    setStep("result",       "pass", "15. " + actionLabel + " ACCEPTED — bitmask: 0x" + Number(storedBitmask).toString(16));
+    setStep("result", "pass", "4. " + action.toUpperCase() + " ACCEPTED — bitmask: 0x" + Number(storedBitmask).toString(16));
 
     showResult("success",
-      actionLabel + " ACCEPTED",
-      "<strong>Token #" + tokenId + "</strong> is now " + (action === "freeze" ? "FROZEN" : "UNFROZEN") + "<br>" +
-      "<strong>Case:</strong> " + caseNumber + "<br>" +
-      "<strong>Judge:</strong> " + judge.address + "<br>" +
-      "<strong>Co-signer:</strong> " + cosigner.address + "<br>" +
-      "<strong>Nonce used:</strong> " + nonce + "<br>" +
+      action.toUpperCase() + " ACCEPTED",
+      "<strong>Token #" + currentOrder.tokenId + "</strong> is now " + (action === "freeze" ? "FROZEN" : "UNFROZEN") + "<br>" +
+      "<strong>Case:</strong> " + currentOrder.caseNumber + "<br>" +
+      "<strong>Nonce used:</strong> " + currentOrder.nonce + "<br>" +
       "<strong>Checks bitmask:</strong> 0x" + Number(storedBitmask).toString(16) +
       '<span class="tx-hash">Tx: ' + receipt.hash + '</span>'
     );
 
-    await updateSignerDisplay();
     updatePropertyDisplay();
-
-  } catch (e) {
-    // CLIENT-SIDE MAPPING: revert reason → failing step.
-    // This mapping is maintained in the frontend and is NOT derived from on-chain data.
-    const reason = e.reason || e.message || "Unknown error";
-
-    if (reason.includes("already submitted")) {
-      setStep("expiry", "pass", "1. Not expired"); setStep("replay", "fail", "2. FAILED: Order already submitted (replay blocked)");
-      ["hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — duplicate");
-    } else if (reason.includes("Order has expired")) {
-      setStep("expiry", "fail", "1. FAILED: Order has expired");
-      ["replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — expired");
-    } else if (reason.includes("below quorum threshold")) {
-      setStep("expiry","pass","1. Not expired"); setStep("replay","pass","2. Not duplicate");
-      setStep("hash","pass","3. Hashed"); setStep("sign","pass","4. Signed"); setStep("preview","fail","5. Pre-validate: quorum threshold not met");
-      setStep("submit","pass","6. Submitted"); setStep("quorum","fail","12. FAILED: Signatures below quorum threshold");
-      ["recover","nodupe","registry","validity","jurisdiction","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — quorum");
-    } else if (reason.includes("Duplicate signer")) {
-      ["expiry","replay","hash","sign","preview","submit"].forEach(s => setStep(s, "pass", ""));
-      setStep("recover","pass","7. Signers recovered"); setStep("nodupe","fail","8. FAILED: Duplicate signer detected");
-      ["registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — duplicate signer");
-    } else if (reason.includes("Unregistered or revoked")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe"].forEach(s => setStep(s, "pass", ""));
-      setStep("registry","fail","9. FAILED: Signer not in CourtKeyRegistry");
-      ["validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — unauthorized signer");
-    } else if (reason.includes("Judicial key expired") || reason.includes("not yet valid")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry"].forEach(s => setStep(s, "pass", ""));
-      setStep("validity","fail","10. FAILED: Judicial key expired or not yet valid");
-      ["jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — key validity");
-    } else if (reason.includes("jurisdiction")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity"].forEach(s => setStep(s, "pass", ""));
-      setStep("jurisdiction","fail","11. FAILED: Court lacks territorial jurisdiction");
-      ["quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — wrong jurisdiction");
-    } else if (reason.includes("JUDGE signature required") || reason.includes("CLERK or REGISTRAR")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction"].forEach(s => setStep(s, "pass", ""));
-      setStep("quorum","fail","12. FAILED: " + reason);
-      ["nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
-      setStep("result", "fail", "15. " + actionLabel + " REJECTED — quorum role");
-    } else if (reason.includes("Invalid nonce")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum"].forEach(s => setStep(s, "pass", ""));
-      setStep("nonce","fail","13. FAILED: Invalid nonce (submitted " + nonce + ")");
-      setStep("pecuniary","pending","");
-      setStep("result","fail","15. " + actionLabel + " REJECTED — wrong nonce");
-    } else if (reason.includes("pecuniary limit")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce"].forEach(s => setStep(s, "pass", ""));
-      setStep("pecuniary","fail","14. FAILED: Parcel value exceeds court pecuniary limit");
-      setStep("result","fail","15. " + actionLabel + " REJECTED — pecuniary jurisdiction");
-    } else if (reason.includes("not frozen")) {
-      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pass", ""));
-      setStep("result","fail","15. UNFREEZE REJECTED — token is not frozen");
-    } else {
-      setStep("submit","fail","6. Transaction failed: " + reason);
-      setStep("result","fail","15. ERROR");
+    // Update nonce for next order if connected as judge
+    if (connectedRole === 1) {
+      const nextNonce = await contract.judgeNonce(connectedAddress);
+      document.getElementById("court-nonce").value = nextNonce.toString();
     }
 
-    showResult("fail",
-      actionLabel + " REJECTED",
-      "<strong>Reason:</strong> " + reason + "<br><strong>Judge:</strong> " + judge.address
-    );
+  } catch (e) {
+    const reason = e.reason || e.message || "Unknown error";
+    setStep("submit", "fail", "2. Failed: " + reason);
+    setStep("result", "fail", "4. " + action.toUpperCase() + " REJECTED");
+    showResult("fail", action.toUpperCase() + " REJECTED", "<strong>Reason:</strong> " + reason);
+  } finally {
+    submitBtn.className = "btn btn-green"; submitBtn.disabled = false; submitBtn.textContent = "Submit Order";
   }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function renderSigStatus() {
+  if (!currentOrder) return;
+  const box = document.getElementById("sig-status-box");
+  const list = document.getElementById("sig-list");
+  const thresh = document.getElementById("sig-threshold");
+  box.style.display = "block";
+  list.innerHTML = "";
+  for (const s of currentOrder.signatures) {
+    const row = document.createElement("div");
+    row.className = "sig-status-row";
+    row.innerHTML = '<span class="sig-dot done"></span>' +
+      '<span>' + s.signer.slice(0,10) + "..." + s.signer.slice(-6) +
+      ' (' + (ROLE_NAMES[s.role] || "?") + ') — signed</span>';
+    list.appendChild(row);
+  }
+  const hasJudge = currentOrder.signatures.some(s => s.role === 1);
+  const hasCosig = currentOrder.signatures.some(s => s.role === 2 || s.role === 3);
+  if (!hasJudge) {
+    const row = document.createElement("div");
+    row.className = "sig-status-row";
+    row.innerHTML = '<span class="sig-dot needed"></span><span>JUDGE — needed</span>';
+    list.appendChild(row);
+  }
+  if (!hasCosig) {
+    const row = document.createElement("div");
+    row.className = "sig-status-row";
+    row.innerHTML = '<span class="sig-dot needed"></span><span>CLERK or REGISTRAR — needed</span>';
+    list.appendChild(row);
+  }
+  thresh.textContent = "On-chain quorum threshold: " + quorumThreshold + " signature(s). " +
+    currentOrder.signatures.length + "/" + quorumThreshold + " collected.";
+}
+
+function renderExport() {
+  if (!currentOrder) return;
+  const exportData = {
+    tokenId:     currentOrder.tokenId,
+    caseNumber:  currentOrder.caseNumber,
+    orderExpiry: currentOrder.orderExpiry,
+    nonce:       currentOrder.nonce,
+    action:      currentOrder.action,
+    orderHash:   currentOrder.orderHash,
+    signatures:  currentOrder.signatures
+  };
+  document.getElementById("export-json").value = JSON.stringify(exportData, null, 2);
+}
+
+function copyExport() {
+  const ta = document.getElementById("export-json");
+  ta.select();
+  document.execCommand("copy");
+  alert("Copied to clipboard.");
+}
+
+function resetFlow() {
+  currentOrder = null;
+  document.getElementById("export-card").style.display = "none";
+  document.getElementById("submit-card").style.display = "none";
+  document.getElementById("sig-status-box").style.display = "none";
+  document.getElementById("steps-card").style.display = "none";
+  document.getElementById("court-result").style.display = "none";
+  document.getElementById("import-json").value = "";
+  document.getElementById("export-json").value = "";
+  document.getElementById("import-validation").style.display = "none";
+}
+
+function showValidation(el, ok, msg) {
+  el.style.display = "block";
+  el.style.color = ok ? "#16A34A" : "#DC2626";
+  el.style.background = ok ? "#F0FDF4" : "#FEF2F2";
+  el.style.padding = "8px 12px";
+  el.style.borderRadius = "6px";
+  el.style.border = "1px solid " + (ok ? "#BBF7D0" : "#FCA5A5");
+  el.textContent = msg;
 }
 
 function setStep(name, status, text) {
   const el = document.getElementById("step-" + name);
+  if (!el) return;
   el.className = "step-row " + status;
-  el.innerHTML =
-    '<div class="step-icon"><span class="step-dot"></span></div>' +
+  el.innerHTML = '<div class="step-icon"><span class="step-dot"></span></div>' +
     '<div class="step-body">' + (text || '') + '</div>';
 }
 
@@ -768,9 +952,9 @@ function showResult(type, title, bodyHtml) {
   const el = document.getElementById("court-result");
   el.className = "result-card " + (type === "success" ? "success" : "fail");
   el.style.display = "block";
-  document.getElementById("result-icon").innerHTML = '<span class="result-dot"></span>';
   document.getElementById("result-title").textContent = title;
-  document.getElementById("result-body").innerHTML    = bodyHtml;
+  document.getElementById("result-body").innerHTML = bodyHtml;
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 init();
