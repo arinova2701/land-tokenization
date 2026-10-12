@@ -178,7 +178,11 @@ async function main() {
     catch (_) { existing = {}; }
   }
 
-  existing[networkName] = {
+  // Save Besu multi-signer results under a distinct key so legacy single-signer
+  // results can coexist for comparison (Sprint 2 requirement).
+  const saveKey = networkName === "besu" ? "besu_multi_signer" : networkName;
+
+  existing[saveKey] = {
     network:      networkName,
     chainId:      Number(chainId),
     timestamp:    new Date().toISOString(),
