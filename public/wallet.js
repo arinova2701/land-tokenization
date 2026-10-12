@@ -212,6 +212,102 @@
   // Auto-reconnect on load (no popup) and initialise the session.
   const ready = _refreshSession();
 
+  // ── Shared session header ───────────────────────────────────────────────────
+  // Where each role belongs after login. No role (or no wallet) means the public page.
+  const ROLE_HOME = { JUDGE: "court.html", CLERK: "court.html", REGISTRAR: "registrar.html" };
+  function homeFor(role) { return ROLE_HOME[role] || "index.html"; }
+
+  const ROLE_COLORS = {
+    JUDGE:     { bg: "#DBEAFE", fg: "#1D4ED8" },
+    CLERK:     { bg: "#FEF3C7", fg: "#B45309" },
+    REGISTRAR: { bg: "#DCFCE7", fg: "#15803D" },
+    NONE:      { bg: "#E2E8F0", fg: "#475569" },
+  };
+
+  const HEADER_CSS =
+    ".ny-session{display:flex;align-items:center;flex-wrap:wrap;gap:12px;max-width:1200px;margin:0 auto 16px;" +
+    "padding:12px 20px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;font-size:16px;color:#475569}" +
+    ".ny-badge{padding:3px 12px;border-radius:999px;font-weight:700;font-size:14px;letter-spacing:.5px}" +
+    ".ny-addr{font-family:monospace;font-size:15px;color:#0F172A}" +
+    ".ny-court{color:#64748B;font-size:15px}" +
+    ".ny-spacer{flex:1}" +
+    ".ny-btn{border:1px solid #CBD5E1;background:#fff;color:#0F172A;padding:7px 16px;border-radius:8px;font-size:15px;cursor:pointer;font-family:inherit}" +
+    ".ny-btn:hover{background:#F1F5F9}" +
+    ".ny-warn{max-width:1200px;margin:0 auto 16px;padding:12px 20px;background:#FEF3C7;border:1px solid #FCD34D;" +
+    "border-radius:10px;color:#92400E;font-size:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}";
+
+  function injectHeaderCss() {
+    if (document.getElementById("ny-session-css")) return;
+    const style = document.createElement("style");
+    style.id = "ny-session-css";
+    style.textContent = HEADER_CSS;
+    document.head.appendChild(style);
+  }
+
+  function redirectToLogin(reason, extra) {
+    const params = new URLSearchParams({ reason });
+    if (extra) for (const k of Object.keys(extra)) params.set(k, extra[k]);
+    window.location.replace("login.html?" + params.toString());
+  }
+
+  /**
+   * Renders the shared session header into `container` and guards the page.
+   *   allowedRoles: roles that may use this page, e.g. ["JUDGE", "CLERK"].
+   *   onSession(session): called once the user is allowed in, and again on every
+   *                       later session change that is still allowed.
+   * No wallet or a role outside allowedRoles sends the user to login.html with a reason.
+   * A wrong MetaMask network shows a switch prompt instead of redirecting.
+   */
+  async function mountHeader({ container, allowedRoles, onSession }) {
+    injectHeaderCss();
+    const root = typeof container === "string" ? document.querySelector(container) : container;
+    await ready;
+
+    let leaving = false; // set while signing out, so the cleared session does not trigger a second redirect
+    async function render() {
+      if (leaving) return;
+      const s = getSession();
+      if (!hasMetaMask()) { redirectToLogin("nowallet"); return; }
+      if (!s) { redirectToLogin("connect"); return; }
+      if (await isWrongNetwork()) {
+        root.innerHTML =
+          '<div class="ny-warn"><span>MetaMask is on the wrong network. NyayaChain runs on chain ' + CHAIN_ID + '.</span>' +
+          '<button class="ny-btn" id="ny-switch-net">Switch network</button></div>';
+        root.querySelector("#ny-switch-net").onclick = async () => {
+          try { await ensureNetwork(); } catch (_) { /* user declined */ }
+        };
+        return;
+      }
+      if (!allowedRoles.includes(s.role)) {
+        redirectToLogin("wrongrole", { role: s.role || "NONE", need: allowedRoles.join(",") });
+        return;
+      }
+      const c = ROLE_COLORS[s.role] || ROLE_COLORS.NONE;
+      root.innerHTML =
+        '<div class="ny-session">' +
+          '<span class="ny-badge" style="background:' + c.bg + ';color:' + c.fg + '">' + s.role + '</span>' +
+          '<span class="ny-addr" title="' + s.address + '">' + shortAddress(s.address) + '</span>' +
+          '<span class="ny-court"></span>' +
+          '<span class="ny-spacer"></span>' +
+          '<button class="ny-btn" id="ny-switch">Switch account</button>' +
+          '<button class="ny-btn" id="ny-signout">Sign out</button>' +
+        '</div>';
+      root.querySelector(".ny-court").textContent = s.courtName; // court name comes from chain: never as HTML
+      root.querySelector("#ny-signout").onclick = async () => {
+        leaving = true;
+        await signOut();
+        redirectToLogin("signedout");
+      };
+      root.querySelector("#ny-switch").onclick = async () => {
+        try { await switchAccount(); } catch (_) { /* user declined */ }
+      };
+      if (onSession) onSession(s);
+    }
+
+    window.addEventListener("nyaya:session-changed", render);
+    await render();
+  }
+
   window.NyayaWallet = {
     CHAIN_ID,
     METAMASK_URL,
@@ -224,6 +320,8 @@
     onWalletChange,
     signOrderHash,
     getSession,
+    homeFor,
+    mountHeader,
     shortAddress,
     ready,
   };
