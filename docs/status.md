@@ -38,20 +38,21 @@
 - Revert-reason → failing-step mapping in court portal is labelled as CLIENT-SIDE MAPPING.
 
 ### Step 5 — Tests, benchmarks, docs
-- `test/negative-corpus.js`: 26 test cases (20 original + 6 new).
-- New cases: 21 (missing co-signer), 22 (duplicate signer), 23 (wrong role), 24 (empty signatures), 25 (pecuniary limit exceeded), 26 (non-agent ParcelToken call).
-- All 26 pass on Hardhat.
+- `test/negative-corpus.js`: 27 test cases (20 original + 6 new + 1 demo-path happy path).
+- New cases: 21 (missing co-signer), 22 (duplicate signer), 23 (wrong role), 24 (empty signatures), 25 (pecuniary limit exceeded), 26 (non-agent ParcelToken call), 27 (multi-signer full freeze/unfreeze lifecycle with demo-style random wallets).
+- All 27 pass on Hardhat. 26/26 pass on Besu QBFT.
 - Benchmark re-run on Hardhat localhost: avg 2ms, p95 3ms, p99 3ms (100 multi-signer tx).
+- Besu QBFT multi-signer benchmark (100 tx): min 1528ms, avg 1999ms, median 2039ms, p95 2051ms, p99 2054ms, max 2056ms.
+- Prior single-signer Besu results retained under `besu_single_signer_legacy` key in `data/benchmark-results.json`.
 - `docs/idf-b-alignment.md` added.
 
 ## Not implemented / out of scope
-- Besu QBFT benchmark not re-run (network not started); prior results retained in `data/benchmark-results.json`.
 - Full T-REX identity registry: out of scope; `ParcelToken` implements the freeze surface only.
-- REST/GraphQL indexer: no backend; all state queried directly from chain via ethers.js.
+- No off-chain backend or indexer exists in this repo. All state is queried directly from the chain via ethers.js.
 
 ## Networks
 | Network         | Chain ID | Block time | Status        |
 |-----------------|----------|------------|---------------|
-| Hardhat (in-process) | 31337 | instant | Tests pass |
+| Hardhat (in-process) | 31337 | instant | 26/26 tests pass |
 | Hardhat localhost    | 31337 | instant | Deploy + benchmark verified |
-| Besu QBFT (docker)   | 1337  | ~2s     | Scripts updated; network not started |
+| Besu QBFT (docker)   | 1337  | ~2s     | Deployed; 26/26 tests pass; multi-signer benchmark run |
