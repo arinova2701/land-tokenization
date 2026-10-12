@@ -69,8 +69,9 @@ Claims are stated only where the implementation actually delivers them.
 **Evidence:**
 - `HistoryEntry.checksBitmask uint256` stored on-chain for every accepted order.
 - `OrderAccepted` and `OrderVacated` events emit `checksBitmask`.
-- `getOrderChecks(...)` view function returns a bitmask of passing checks before submission.
-- Bitmask bits 0–11 correspond to: EXPIRY, REPLAY, RECOVER, NO_DUPE, REGISTRY, VALIDITY, JURISDICTION, QUORUM_JUDGE, QUORUM_COSIG, NONCE, PECUNIARY, FROZEN_STATE.
+- `getOrderChecks(...)` view function returns a bitmask of passing checks before submission (mirrors the 11-check freeze path).
+- Bitmask is 12 bits wide (bits 0–11): EXPIRY, REPLAY, RECOVER, NO_DUPE, REGISTRY, VALIDITY, JURISDICTION, QUORUM_JUDGE, QUORUM_COSIG, NONCE, PECUNIARY, FROZEN_STATE.
+- `submitFreezeOrder` sets bits 0–10 (11 checks); `submitUnfreezeOrder` sets bits 0–11 (12 checks, adding FROZEN_STATE at bit 11).
 - `getFreezeHistoryEntry` returns the stored bitmask alongside other fields.
 
 ---

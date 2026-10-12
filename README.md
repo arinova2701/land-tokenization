@@ -14,7 +14,7 @@ NyayaChain addresses this by recording freeze and unfreeze orders directly on-ch
 
 ## What the System Does
 
-When a court officer submits a freeze or unfreeze order, the smart contract runs **11 sequential on-chain verification checks** before accepting it:
+When a court officer submits a freeze or unfreeze order, the smart contract runs **11 sequential on-chain verification checks** (freeze) or **12** (unfreeze) before accepting it:
 
 | # | Check | Revert Reason on Failure |
 |---|-------|--------------------------|
@@ -29,8 +29,11 @@ When a court officer submits a freeze or unfreeze order, the smart contract runs
 | 9 | At least one signer holds `ROLE_CLERK` or `ROLE_REGISTRAR` | `No clerk or registrar co-signer` |
 | 10 | Nonce matches the judge's expected sequential counter | `Invalid nonce` |
 | 11 | Property's declared value is within the judge's court-level pecuniary limit | `Declared value exceeds court pecuniary limit` |
+| 12† | Token is currently frozen (unfreeze orders only) | `Token is not frozen` |
 
-Only if all 11 checks pass is the freeze state updated and the order recorded in the immutable freeze history. Each accepted order stores a `checksBitmask` on-chain encoding which checks passed.
+† Check 12 applies to `submitUnfreezeOrder` only. The `checksBitmask` stored in every `HistoryEntry` is **12 bits wide** (bits 0–11), mapping one bit to each check. A set bit means the check passed at acceptance time.
+
+Only if all applicable checks pass is the freeze state updated and the order recorded in the immutable freeze history.
 
 ---
 

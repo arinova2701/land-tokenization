@@ -360,25 +360,30 @@ contract CourtKeyRegistry {
     ) external {
         uint256 bitmask = 0;
 
+        // Check 1: order expiry
         require(block.timestamp <= orderExpiry, "Order has expired");
         bitmask |= CHECK_EXPIRY;
 
+        // Check 2: replay protection (secondary — nonce is primary)
         require(!usedOrders[orderHash], "Order already submitted");
         bitmask |= CHECK_REPLAY;
 
+        // Checks 3–9: multi-signer quorum (Step 1)
         address judgeAddress;
         (judgeAddress, bitmask) = _validateSignatures(orderHash, tokenId, signatures, bitmask);
 
+        // Check 10: per-judge nonce sequencing (primary replay/ordering protection)
         require(nonce == judgeNonce[judgeAddress], "Invalid nonce");
         bitmask |= CHECK_NONCE;
 
+        // Check 11: pecuniary jurisdiction (Step 2)
         require(
             parcelDeclaredValue[tokenId] <= courtLevelMaxValue[registry[judgeAddress].courtLevel],
             "Parcel value exceeds court pecuniary limit"
         );
         bitmask |= CHECK_PECUNIARY;
 
-        // Additional: token must currently be frozen
+        // Check 12: frozen state (unfreeze only — token must currently be frozen)
         require(frozen(tokenId), "Token is not frozen");
         bitmask |= CHECK_FROZEN_STATE;
 
