@@ -74,6 +74,7 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
     details.push(`EIP-191 signed-message hash: ${ethers.hashMessage(ethers.getBytes(hash))}`);
     if (order.orderHash && order.orderHash.toLowerCase() !== hash.toLowerCase()) errors.push("Supplied orderHash differs from the recomputed digest");
     const block = accepted?.block || await provider.getBlock("latest");
+    const atBlock = {blockTag:block.number};
     if (Number(block.timestamp) > Number(order.orderExpiry)) {
       if (!accepted) errors.push(names.EXPIRY);
       else details.push("Order is expired now; checked against the acceptance block");
@@ -84,20 +85,20 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
       try { address = ethers.verifyMessage(ethers.getBytes(hash), signatures[i]); }
       catch { errors.push(`Signature ${i+1}: invalid EIP-191 signature`); continue; }
       recovered.push(address);
-      const key = await contract.registry(address);
+      const key = await contract.registry(address,atBlock);
       const role = roles[Number(key.role)] || "Unknown";
       details.push(`Signature ${i+1}: ${role} ${key.courtName || "(no court)"} · ${address} · level ${key.courtLevel}`);
       if (order.signatures[i]?.signer && order.signatures[i].signer.toLowerCase() !== address.toLowerCase()) errors.push(`Signature ${i+1}: claimed signer differs from recovered address`);
       if (!key.active) errors.push(`Signature ${i+1}: ${names.REGISTRY}`);
       if (Number(block.timestamp) < Number(key.validFrom) || Number(block.timestamp) > Number(key.validUntil)) errors.push(`Signature ${i+1}: ${names.VALIDITY}`);
       if (Number(key.role) !== 3) {
-        const parcel = await contract.propertyTerritory(order.tokenId);
-        const parent = await contract.parentTerritory(parcel);
+        const parcel = await contract.propertyTerritory(order.tokenId,atBlock);
+        const parent = await contract.parentTerritory(parcel,atBlock);
         if (key.territoryCode !== parcel && key.territoryCode !== parent) errors.push(`Signature ${i+1}: ${names.JURISDICTION}`);
       }
     }
     if (new Set(recovered.map(a=>a.toLowerCase())).size !== recovered.length) errors.push(names.NO_DUPE);
-    const signerRoles = await Promise.all(recovered.map(async a => Number((await contract.registry(a)).role)));
+    const signerRoles = await Promise.all(recovered.map(async a => Number((await contract.registry(a,atBlock)).role)));
     for (const [number, name] of [[1,"QUORUM_JUDGE"],[2,"QUORUM_CLERK"],[3,"QUORUM_REGISTRAR"]]) {
       if (!signerRoles.includes(number)) errors.push(names[name]);
     }
@@ -107,16 +108,25 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
       if (BigInt(order.nonce) !== expected) errors.push(`${names.NONCE}: expected ${expected}, got ${order.nonce}`);
     }
     if (judge) {
-      const key = await contract.registry(judge);
-      const [value, max] = await Promise.all([contract.parcelDeclaredValue(order.tokenId),contract.courtLevelMaxValue(key.courtLevel)]);
+      const key = await contract.registry(judge,atBlock);
+      const [value, max] = await Promise.all([contract.parcelDeclaredValue(order.tokenId,atBlock),contract.courtLevelMaxValue(key.courtLevel,atBlock)]);
       details.push(`Pecuniary: ₹${value.toLocaleString("en-IN")} declared vs ₹${max.toLocaleString("en-IN")} court limit`);
       if (value > max) errors.push(names.PECUNIARY);
     }
     if (!accepted) {
       const bits = BigInt(await contract.getOrderChecks(order.tokenId,hash,order.orderExpiry,order.nonce,signatures));
       details.push(`On-chain preflight bitmask: 0x${bits.toString(16)}`);
+      let effectiveBits=bits;
+      if(action==="unfreeze"){
+        // Sprint 0b getOrderChecks omits FROZEN_STATE; query it directly.
+        const frozen=await contract.frozen(order.tokenId);
+        const stateCheck=checks.checks.find(ch=>ch.id==="FROZEN_STATE");
+        if(frozen)effectiveBits|=1n<<BigInt(stateCheck.bit);
+        else errors.push(names.FROZEN_STATE);
+        details.push(`Unfreeze frozen-state check: ${frozen}`);
+      }
       // The first unset bit is the contract's failure point. Later bits may be unset because checking stopped.
-      const first = checks.checks.find(ch => ch.actions.includes(action) && !(bits & (1n << BigInt(ch.bit))));
+      const first = checks.checks.find(ch => ch.actions.includes(action) && !(effectiveBits & (1n << BigInt(ch.bit))));
       if (first && !errors.length) errors.push(names[first.id] || first.name);
       if (await contract.usedOrders(hash)) errors.push(names.REPLAY);
     } else {
