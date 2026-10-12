@@ -63,6 +63,12 @@ function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (
     uint256 checksBitmask
 )
 
+// Signer addresses and roles for a specific history entry (Sprint 0b).
+function getFreezeHistorySigners(uint256 tokenId, uint256 index) view returns (
+    address[] memory signers,
+    uint8[]   memory roles
+)
+
 // Pre-flight check: returns bitmask of passing checks without reverting.
 // Call this before submitFreezeOrder to show the checks panel.
 // Bit definitions are in public/checks.json.

@@ -8,7 +8,7 @@
 ### Step 1 — Multi-signer quorum
 - Roles: `ROLE_JUDGE` (1), `ROLE_CLERK` (2), `ROLE_REGISTRAR` (3). Stored in `JudicialKey.role`.
 - `submitFreezeOrder` / `submitUnfreezeOrder` accept `bytes[] calldata signatures`.
-- Quorum rule: ≥ 1 JUDGE + ≥ 1 CLERK/REGISTRAR. Minimum total: `quorumThreshold` (default 2).
+- Quorum rule: exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR. Minimum total: `quorumThreshold` (default 3, Sprint 0b).
 - `ROLE_REGISTRAR` is exempt from territorial jurisdiction (national authority).
 - Checks: duplicate signers, unregistered signers, expired keys, wrong roles — all enforced per-signer in a loop.
 - Per-judge sequential nonce and `usedOrders` replay protection unchanged.
@@ -30,22 +30,32 @@
 
 ### Step 4 — On-chain verification record
 - `HistoryEntry` has a new `checksBitmask uint256` field.
-- Bitmask is **12 bits wide** (bits 0–11): EXPIRY, REPLAY, RECOVER, NO_DUPE, REGISTRY, VALIDITY, JURISDICTION, QUORUM_JUDGE, QUORUM_COSIG, NONCE, PECUNIARY, FROZEN_STATE.
-- `submitFreezeOrder` runs **11 checks** (bits 0–10); `submitUnfreezeOrder` runs **12 checks** (bits 0–11, adding FROZEN_STATE).
-- `getOrderChecks(tokenId, orderHash, orderExpiry, nonce, signatures)` — view function; mirrors the freeze path (11 checks); returns bitmask of passing checks without reverting. Uses `ECDSA.tryRecover` to avoid reverts in view context.
-- Events `OrderAccepted` and `OrderVacated` now emit `checksBitmask`.
-- Court portal calls `getOrderChecks` before submit (pre-validation, step 5).
+- Bitmask is **13 bits wide** (bits 0–12): EXPIRY, REPLAY, RECOVER, NO_DUPE, REGISTRY, VALIDITY, JURISDICTION, QUORUM_JUDGE, QUORUM_CLERK, NONCE, PECUNIARY, FROZEN_STATE, QUORUM_REGISTRAR.
+- `submitFreezeOrder` runs **12 checks** (bits 0–10, 12); `submitUnfreezeOrder` runs **13 checks** (bits 0–12, adding FROZEN_STATE at bit 11).
+- `getOrderChecks(tokenId, orderHash, orderExpiry, nonce, signatures)` — view function; mirrors the freeze path (12 checks); returns bitmask of passing checks without reverting. Uses `ECDSA.tryRecover` to avoid reverts in view context.
+- Events `OrderAccepted` and `OrderVacated` now emit `checksBitmask`, `signers[]`, and `roles[]`.
+- `HistoryEntry` also stores `address[] signers` and `uint8[] roles` per order.
+- `getFreezeHistorySigners(tokenId, index)` returns signers and roles for any history entry.
+- Court portal calls `getOrderChecks` before submit (pre-validation).
 - Court portal shows stored bitmask after success.
 - Revert-reason → failing-step mapping in court portal is labelled as CLIENT-SIDE MAPPING.
 
+### Sprint 0b — Three-signer quorum + signer history
+- `quorumThreshold` default raised from 2 to 3: requires exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR.
+- `CHECK_QUORUM_COSIG` (bit 8) replaced by `CHECK_QUORUM_CLERK` (bit 8); `CHECK_QUORUM_REGISTRAR` added at bit 12.
+- `HistoryEntry` records all signer addresses and roles per order.
+- `OrderAccepted` / `OrderVacated` events emit the full signer array.
+- `getFreezeHistorySigners(tokenId, index)` — new view function.
+- `setQuorumThreshold` minimum raised to 3.
+
 ### Step 5 — Tests, benchmarks, docs
-- `test/negative-corpus.js`: 27 test cases (20 original + 6 new + 1 demo-path happy path).
-- New cases: 21 (missing co-signer), 22 (duplicate signer), 23 (wrong role), 24 (empty signatures), 25 (pecuniary limit exceeded), 26 (non-agent ParcelToken call), 27 (multi-signer full freeze/unfreeze lifecycle with demo-style random wallets).
-- All 27 pass on Hardhat. All 27 pass on Besu QBFT.
-- Benchmark re-run on Hardhat localhost: avg 2ms, p95 3ms, p99 3ms (100 multi-signer tx).
-- Besu QBFT multi-signer benchmark (100 tx): min 1528ms, avg 1999ms, median 2039ms, p95 2051ms, p99 2054ms, max 2056ms.
-- Prior single-signer Besu results retained under `besu_single_signer_legacy` key in `data/benchmark-results.json`.
+- `test/negative-corpus.js`: 30 test cases (20 original + 6 new + 1 demo happy path + 3 Sprint 0b cases).
+- Sprint 0b new cases: 28 (missing CLERK), 29 (missing REGISTRAR), 30 (two JUDGEs, no CLERK).
+- All 30 pass on Hardhat.
+- Besu QBFT three-signer benchmark (100 tx) — run after Sprint 0b merge; results saved under `besu_three_signer` key.
+- Prior Besu results retained under `besu_multi_signer` and `besu_single_signer_legacy` keys in `data/benchmark-results.json`.
 - `docs/idf-b-alignment.md` added.
+- `docs/interfaces.md` added (Sprint 0a).
 
 ## Design notes
 
