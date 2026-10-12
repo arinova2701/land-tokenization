@@ -407,7 +407,7 @@ footer {
 <script>
 const ABI = [
   "function admin() view returns (address)",
-  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode)",
+  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
   "function judgeNonce(address) view returns (uint256)",
   "function frozen(uint256) view returns (bool)",
   "function frozenBy(uint256) view returns (string)",
@@ -415,18 +415,25 @@ const ABI = [
   "function propertyTerritory(uint256) view returns (bytes32)",
   "function parentTerritory(bytes32) view returns (bytes32)",
   "function territoryName(bytes32) view returns (string)",
+  "function parcelDeclaredValue(uint256) view returns (uint256)",
+  "function courtLevelMaxValue(uint8) view returns (uint256)",
+  "function quorumThreshold() view returns (uint256)",
   "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
-  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce)",
+  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
+  "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
   "function setTerritory(bytes32 code, string name, bytes32 parent)",
-  "function registerProperty(uint256 tokenId, bytes32 territory)",
-  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory)",
+  "function registerProperty(uint256 tokenId, bytes32 territory, uint256 declaredValue)",
+  "function setParcelDeclaredValue(uint256 tokenId, uint256 value)",
+  "function setCourtLevelMaxValue(uint8 courtLevel, uint256 maxValue)",
+  "function setQuorumThreshold(uint256 threshold)",
+  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory, uint8 role)",
   "function revokeJudge(address signer)",
-  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
-  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, string territory)",
-  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
-  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
-  "event PropertyRegistered(uint256 indexed tokenId, string territory)"
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory)",
+  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
+  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
 ];
 
 let provider, contract, config;
@@ -527,13 +534,25 @@ async function checkStatus() {
       const entry = await contract.getFreezeHistoryEntry(tokenId, i);
       const ts = new Date(Number(entry.timestamp) * 1000).toLocaleString("en-IN", { dateStyle:"medium", timeStyle:"short" });
       const isFreeze = entry.isFreezeAction;
+      const bitmask  = Number(entry.checksBitmask);
+      // Render check bitmask (Step 4: on-chain verification record)
+      const CHECK_NAMES = [
+        "expiry","replay","recover","no-dupe","registry","validity",
+        "jurisdiction","judge-quorum","cosig-quorum","nonce","pecuniary","frozen-state"
+      ];
+      const checkDots = CHECK_NAMES.map((n, idx) => {
+        const pass = (bitmask >> idx) & 1;
+        return '<span title="' + n + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
+          (pass ? '#16A34A' : '#CBD5E1') + ';margin-right:2px;"></span>';
+      }).join('');
       const div = document.createElement("div");
       div.className = "history-entry";
       div.innerHTML =
         '<span class="history-badge ' + (isFreeze ? 'freeze' : 'unfreeze') + '">' + (isFreeze ? 'FREEZE' : 'UNFREEZE') + '</span>' +
         '<div class="history-meta">' +
           '<strong>' + entry.caseNumber + '</strong><br>' +
-          '<span class="history-sub">' + ts + ' &nbsp;&middot;&nbsp; Nonce ' + entry.nonce.toString() + ' &nbsp;&middot;&nbsp; ' + entry.signer.slice(0,10) + '...' + entry.signer.slice(-6) + '</span>' +
+          '<span class="history-sub">' + ts + ' &nbsp;&middot;&nbsp; Nonce ' + entry.nonce.toString() + ' &nbsp;&middot;&nbsp; ' + entry.signer.slice(0,10) + '...' + entry.signer.slice(-6) + '</span><br>' +
+          '<span class="history-sub" title="On-chain checks bitmask (Step 4)">' + checkDots + ' checks bitmask: 0x' + bitmask.toString(16) + '</span>' +
         '</div>';
       entriesEl.appendChild(div);
     }

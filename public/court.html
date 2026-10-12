@@ -303,6 +303,12 @@ footer {
       <input type="text" id="court-nonce" readonly value="0">
     </div>
 
+    <div class="form-group">
+      <label for="court-cosigner">Co-Signer <span class="label-note">CLERK or REGISTRAR — required for quorum</span></label>
+      <select id="court-cosigner" onchange="updateCoSignerDisplay()"></select>
+      <div class="signer-status" id="cosigner-status"></div>
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-primary" onclick="submitOrder('freeze')">Sign &amp; Submit Freeze</button>
       <button class="btn btn-gold" onclick="submitOrder('unfreeze')">Sign &amp; Submit Unfreeze</button>
@@ -310,6 +316,8 @@ footer {
   </div>
 
   <!-- Verification Steps Card -->
+  <!-- Steps 1–5 are client-side. Steps 6–15 map to on-chain checks (CHECK_* bitmask bits).
+       The revert-reason → failing-step mapping below is a CLIENT-SIDE MAPPING only. -->
   <div class="card steps-card" id="steps-card">
     <div class="card-title">Verification Progress</div>
     <div class="step-row pending" id="step-expiry">
@@ -322,28 +330,40 @@ footer {
       <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">3. Hash order content (case + token + expiry + nonce)</div>
     </div>
     <div class="step-row pending" id="step-sign">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">4. Sign hash with selected account</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">4. Sign hash (judge + co-signer)</div>
+    </div>
+    <div class="step-row pending" id="step-preview">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">5. Pre-validate via getOrderChecks (on-chain view)</div>
     </div>
     <div class="step-row pending" id="step-submit">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">5. Submit to contract</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">6. Submit to contract</div>
     </div>
     <div class="step-row pending" id="step-recover">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">6. Recover signer via ECDSA</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">7. Recover all signers via ECDSA (on-chain)</div>
+    </div>
+    <div class="step-row pending" id="step-nodupe">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">8. Check no duplicate signers (on-chain)</div>
     </div>
     <div class="step-row pending" id="step-registry">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">7. Check CourtKeyRegistry</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">9. Check CourtKeyRegistry — all signers active (on-chain)</div>
     </div>
     <div class="step-row pending" id="step-validity">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">8. Check key validity window</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">10. Check key validity window (on-chain)</div>
     </div>
     <div class="step-row pending" id="step-jurisdiction">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">9. Check territorial jurisdiction</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">11. Check territorial jurisdiction (on-chain)</div>
+    </div>
+    <div class="step-row pending" id="step-quorum">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">12. Check quorum: JUDGE + CLERK/REGISTRAR present (on-chain)</div>
     </div>
     <div class="step-row pending" id="step-nonce">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">10. Check nonce sequence</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">13. Check nonce sequence (on-chain)</div>
+    </div>
+    <div class="step-row pending" id="step-pecuniary">
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">14. Check pecuniary jurisdiction: declared value ≤ court limit (on-chain)</div>
     </div>
     <div class="step-row pending" id="step-result">
-      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">11. Result</div>
+      <div class="step-icon"><span class="step-dot"></span></div><div class="step-body">15. Result</div>
     </div>
 
     <div class="result-card" id="court-result" style="margin-top:20px;">
@@ -366,7 +386,7 @@ footer {
 <script>
 const ABI = [
   "function admin() view returns (address)",
-  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode)",
+  "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
   "function judgeNonce(address) view returns (uint256)",
   "function frozen(uint256) view returns (bool)",
   "function frozenBy(uint256) view returns (string)",
@@ -374,18 +394,25 @@ const ABI = [
   "function propertyTerritory(uint256) view returns (bytes32)",
   "function parentTerritory(bytes32) view returns (bytes32)",
   "function territoryName(bytes32) view returns (string)",
+  "function parcelDeclaredValue(uint256) view returns (uint256)",
+  "function courtLevelMaxValue(uint8) view returns (uint256)",
+  "function quorumThreshold() view returns (uint256)",
   "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
-  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce)",
+  "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
+  "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
   "function setTerritory(bytes32 code, string name, bytes32 parent)",
-  "function registerProperty(uint256 tokenId, bytes32 territory)",
-  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory)",
+  "function registerProperty(uint256 tokenId, bytes32 territory, uint256 declaredValue)",
+  "function setParcelDeclaredValue(uint256 tokenId, uint256 value)",
+  "function setCourtLevelMaxValue(uint8 courtLevel, uint256 maxValue)",
+  "function setQuorumThreshold(uint256 threshold)",
+  "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory, uint8 role)",
   "function revokeJudge(address signer)",
-  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes signature)",
-  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, string territory)",
-  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
-  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce)",
-  "event PropertyRegistered(uint256 indexed tokenId, string territory)"
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory)",
+  "event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
+  "event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
 ];
 
 const COURT_LEVELS = { 1: "District Munsif", 2: "Sub Court", 3: "District Court", 4: "High Court" };
@@ -436,7 +463,32 @@ async function init() {
         break;
       }
     }
+
+    // Populate co-signer dropdown (CLERK/REGISTRAR accounts)
+    const cosignSelect = document.getElementById("court-cosigner");
+    cosignSelect.innerHTML = "";
+    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
+      const addr = accounts[i].address;
+      let label = addr.slice(0, 10) + "..." + addr.slice(-6);
+      if (addr.toLowerCase() === config.adminAddress.toLowerCase())        label += " (Registrar — co-signer)";
+      else if (addr.toLowerCase() === config.judgeAddress.toLowerCase())   label += " (Judge — primary)";
+      else if (addr.toLowerCase() === config.outsideJudgeAddress.toLowerCase()) label += " (Judge — Kadapa)";
+      else label += " (Unregistered)";
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = label;
+      cosignSelect.appendChild(opt);
+    }
+    // Default co-signer to admin (registrar)
+    for (let i = 0; i < Math.min(accounts.length, 5); i++) {
+      if (accounts[i].address.toLowerCase() === config.adminAddress.toLowerCase()) {
+        cosignSelect.value = i;
+        break;
+      }
+    }
+
     updateSignerDisplay();
+    updateCoSignerDisplay();
     updatePropertyDisplay();
   } catch (e) {
     connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
@@ -477,6 +529,23 @@ async function updateSignerDisplay() {
   }
 }
 
+async function updateCoSignerDisplay() {
+  const idx    = document.getElementById("court-cosigner").value;
+  const addr   = signers[idx].address;
+  const statusEl = document.getElementById("cosigner-status");
+  try {
+    const info = await contract.registry(addr);
+    const roleNames = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
+    if (info.active) {
+      statusEl.innerHTML = '<span class="status-registered">Co-signer: ' + (roleNames[info.role] || "UNKNOWN") + ' — REGISTERED</span>';
+    } else {
+      statusEl.innerHTML = '<span class="status-unregistered">Co-signer: NOT REGISTERED</span>';
+    }
+  } catch (_) {
+    statusEl.innerHTML = '<span class="status-unregistered">Co-signer: NOT REGISTERED</span>';
+  }
+}
+
 async function updatePropertyDisplay() {
   const tokenId = document.getElementById("court-tokenid").value;
   const infoEl  = document.getElementById("property-info");
@@ -497,34 +566,52 @@ async function updatePropertyDisplay() {
   }
 }
 
+// CHECK_* bitmask bit positions (must match CourtKeyRegistry.sol constants)
+const CHECK = {
+  EXPIRY: 0, REPLAY: 1, RECOVER: 2, NO_DUPE: 3,
+  REGISTRY: 4, VALIDITY: 5, JURISDICTION: 6,
+  QUORUM_JUDGE: 7, QUORUM_COSIG: 8, NONCE: 9, PECUNIARY: 10, FROZEN_STATE: 11
+};
+
+function checkBit(bitmask, bit) { return ((Number(bitmask) >> bit) & 1) === 1; }
+
 async function submitOrder(action) {
   const stepsCard = document.getElementById("steps-card");
   const resultEl  = document.getElementById("court-result");
   stepsCard.style.display = "block";
   resultEl.style.display = "none";
 
-  const stepNames = ["expiry","replay","hash","sign","submit","recover","registry","validity","jurisdiction","nonce","result"];
-  stepNames.forEach(s => {
+  // Reset all steps to pending
+  const allSteps = ["expiry","replay","hash","sign","preview","submit",
+                    "recover","nodupe","registry","validity","jurisdiction",
+                    "quorum","nonce","pecuniary","result"];
+  allSteps.forEach(s => {
     const el = document.getElementById("step-" + s);
+    if (!el) return;
     el.className = "step-row pending";
-    el.innerHTML = '<div class="step-icon"><span class="step-dot"></span></div><div class="step-body">' + el.querySelector('.step-body').textContent + '</div>';
+    el.innerHTML = '<div class="step-icon"><span class="step-dot"></span></div><div class="step-body">' + (el.querySelector('.step-body') ? el.querySelector('.step-body').textContent : '') + '</div>';
   });
 
-  const idx          = document.getElementById("court-signer").value;
-  const signer       = signers[idx];
+  const judgeIdx     = document.getElementById("court-signer").value;
+  const cosignIdx    = document.getElementById("court-cosigner").value;
+  const judge        = signers[judgeIdx];
+  const cosigner     = signers[cosignIdx];
   const tokenId      = document.getElementById("court-tokenid").value;
   const caseNumber   = document.getElementById("court-case").value.trim();
-  const expiryMinutes = parseInt(document.getElementById("court-expiry").value.trim()) || 60;
+  const expiryMins   = parseInt(document.getElementById("court-expiry").value.trim()) || 60;
   const nonce        = BigInt(document.getElementById("court-nonce").value.trim() || "0");
   const actionLabel  = action === "freeze" ? "FREEZE" : "UNFREEZE";
 
-  const block = await provider.getBlock("latest");
-  const orderExpiry = block.timestamp + (expiryMinutes * 60);
+  const block       = await provider.getBlock("latest");
+  const orderExpiry = block.timestamp + (expiryMins * 60);
 
   try {
-    setStep("expiry", "pass", "1. Order expiry: " + new Date(Number(orderExpiry) * 1000).toLocaleString());
+    // Step 1: expiry (client-side preview)
+    setStep("expiry", "pass", "1. Order expires: " + new Date(Number(orderExpiry) * 1000).toLocaleString());
+    // Step 2: replay (will be verified on-chain)
     setStep("replay", "pass", "2. Replay check queued for on-chain verification");
 
+    // Step 3: hash
     const orderData = ethers.solidityPacked(
       ["string", "uint256", "uint256", "string", "uint256"],
       [caseNumber, tokenId, orderExpiry, action, nonce]
@@ -532,36 +619,69 @@ async function submitOrder(action) {
     const orderHash = ethers.keccak256(orderData);
     setStep("hash", "pass", "3. Hash (token #" + tokenId + " nonce=" + nonce + "): " + orderHash.slice(0, 18) + "...");
 
-    const signature = await signer.signMessage(ethers.getBytes(orderHash));
-    setStep("sign", "pass", "4. Signed by: " + signer.address.slice(0, 12) + "...");
-    setStep("submit", "pass", "5. Submitting " + actionLabel + " order (nonce=" + nonce + ") to contract...");
+    // Step 4: multi-signer signing
+    const judgeSig   = await judge.signMessage(ethers.getBytes(orderHash));
+    const cosignSig  = await cosigner.signMessage(ethers.getBytes(orderHash));
+    const signatures = [judgeSig, cosignSig];
+    setStep("sign", "pass",
+      "4. Signed by judge " + judge.address.slice(0,10) + "... + co-signer " + cosigner.address.slice(0,10) + "...");
+
+    // Step 5: pre-validate via getOrderChecks (on-chain view call — Step 4 feature)
+    let previewBitmask = 0n;
+    try {
+      previewBitmask = await contract.getOrderChecks(tokenId, orderHash, orderExpiry, nonce, signatures);
+      const allOnChainChecks = (1 << 11) - 1; // bits 0-10 for freeze
+      const allPass = (Number(previewBitmask) & allOnChainChecks) === allOnChainChecks;
+      setStep("preview", allPass ? "pass" : "fail",
+        "5. Pre-validate bitmask: 0x" + Number(previewBitmask).toString(16) +
+        (allPass ? " — all on-chain checks predict PASS" : " — one or more checks predict FAIL"));
+    } catch (_) {
+      setStep("preview", "pending", "5. Pre-validate: view call unavailable");
+    }
+
+    // Step 6: submit
+    setStep("submit", "pass", "6. Submitting " + actionLabel + " order (nonce=" + nonce + ")...");
 
     let tx;
     if (action === "freeze") {
-      tx = await contract.connect(signer).submitFreezeOrder(
-        tokenId, caseNumber, orderHash, orderExpiry, nonce, signature
+      tx = await contract.connect(judge).submitFreezeOrder(
+        tokenId, caseNumber, orderHash, orderExpiry, nonce, signatures
       );
     } else {
-      tx = await contract.connect(signer).submitUnfreezeOrder(
-        tokenId, caseNumber, orderHash, orderExpiry, nonce, signature
+      tx = await contract.connect(judge).submitUnfreezeOrder(
+        tokenId, caseNumber, orderHash, orderExpiry, nonce, signatures
       );
     }
     const receipt = await tx.wait();
 
-    setStep("recover",      "pass", "6. Signer recovered via ECDSA");
-    setStep("registry",     "pass", "7. Signer found in CourtKeyRegistry");
-    setStep("validity",     "pass", "8. Key within valid time window");
-    setStep("jurisdiction", "pass", "9. Court has territorial jurisdiction over property");
-    setStep("nonce",        "pass", "10. Nonce " + nonce + " accepted — next nonce: " + (nonce + 1n));
-    setStep("result",       "pass", "11. " + actionLabel + " ACCEPTED");
+    // Read stored bitmask from history entry (Step 4)
+    let storedBitmask = 0n;
+    try {
+      const histLen = await contract.getFreezeHistoryLength(tokenId);
+      const lastIdx = Number(histLen) - 1;
+      const entry   = await contract.getFreezeHistoryEntry(tokenId, lastIdx);
+      storedBitmask = entry.checksBitmask;
+    } catch (_) {}
+
+    // Mark on-chain steps from stored bitmask
+    setStep("recover",      "pass", "7. All signers recovered via ECDSA (bit " + checkBit(storedBitmask, CHECK.RECOVER) + ")");
+    setStep("nodupe",       "pass", "8. No duplicate signers");
+    setStep("registry",     "pass", "9. All signers active in CourtKeyRegistry");
+    setStep("validity",     "pass", "10. Keys within validity window");
+    setStep("jurisdiction", "pass", "11. Territorial jurisdiction satisfied");
+    setStep("quorum",       "pass", "12. Quorum: JUDGE + CLERK/REGISTRAR present");
+    setStep("nonce",        "pass", "13. Nonce " + nonce + " accepted — next: " + (nonce + 1n));
+    setStep("pecuniary",    "pass", "14. Declared value within court pecuniary limit");
+    setStep("result",       "pass", "15. " + actionLabel + " ACCEPTED — bitmask: 0x" + Number(storedBitmask).toString(16));
 
     showResult("success",
       actionLabel + " ACCEPTED",
       "<strong>Token #" + tokenId + "</strong> is now " + (action === "freeze" ? "FROZEN" : "UNFROZEN") + "<br>" +
       "<strong>Case:</strong> " + caseNumber + "<br>" +
-      "<strong>Authorized by:</strong> " + signer.address + "<br>" +
+      "<strong>Judge:</strong> " + judge.address + "<br>" +
+      "<strong>Co-signer:</strong> " + cosigner.address + "<br>" +
       "<strong>Nonce used:</strong> " + nonce + "<br>" +
-      "<strong>Order expires:</strong> " + new Date(Number(orderExpiry) * 1000).toLocaleString() +
+      "<strong>Checks bitmask:</strong> 0x" + Number(storedBitmask).toString(16) +
       '<span class="tx-hash">Tx: ' + receipt.hash + '</span>'
     );
 
@@ -569,85 +689,69 @@ async function submitOrder(action) {
     updatePropertyDisplay();
 
   } catch (e) {
+    // CLIENT-SIDE MAPPING: revert reason → failing step.
+    // This mapping is maintained in the frontend and is NOT derived from on-chain data.
     const reason = e.reason || e.message || "Unknown error";
 
     if (reason.includes("already submitted")) {
-      setStep("expiry",  "pass", "1. Order not expired");
-      setStep("replay",  "fail", "2. FAILED: Order already submitted (replay blocked)");
-      ["hash","sign","submit","recover","registry","validity","jurisdiction","nonce"].forEach(s => setStep(s, "pending", ""));
-      setStep("result",  "fail", "11. " + actionLabel + " REJECTED — duplicate submission");
+      setStep("expiry", "pass", "1. Not expired"); setStep("replay", "fail", "2. FAILED: Order already submitted (replay blocked)");
+      ["hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — duplicate");
     } else if (reason.includes("Order has expired")) {
-      setStep("expiry",  "fail", "1. FAILED: Order has expired");
-      ["replay","hash","sign","submit","recover","registry","validity","jurisdiction","nonce"].forEach(s => setStep(s, "pending", ""));
-      setStep("result",  "fail", "11. " + actionLabel + " REJECTED — expired order");
+      setStep("expiry", "fail", "1. FAILED: Order has expired");
+      ["replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — expired");
+    } else if (reason.includes("below quorum threshold")) {
+      setStep("expiry","pass","1. Not expired"); setStep("replay","pass","2. Not duplicate");
+      setStep("hash","pass","3. Hashed"); setStep("sign","pass","4. Signed"); setStep("preview","fail","5. Pre-validate: quorum threshold not met");
+      setStep("submit","pass","6. Submitted"); setStep("quorum","fail","12. FAILED: Signatures below quorum threshold");
+      ["recover","nodupe","registry","validity","jurisdiction","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — quorum");
+    } else if (reason.includes("Duplicate signer")) {
+      ["expiry","replay","hash","sign","preview","submit"].forEach(s => setStep(s, "pass", ""));
+      setStep("recover","pass","7. Signers recovered"); setStep("nodupe","fail","8. FAILED: Duplicate signer detected");
+      ["registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — duplicate signer");
     } else if (reason.includes("Unregistered or revoked")) {
-      setStep("expiry",      "pass", "1. Order not expired");
-      setStep("replay",      "pass", "2. Not a duplicate");
-      setStep("hash",        "pass", "3. Order hashed");
-      setStep("sign",        "pass", "4. Signed by: " + signer.address.slice(0, 12) + "...");
-      setStep("submit",      "pass", "5. Submitted");
-      setStep("recover",     "pass", "6. Signer recovered: " + signer.address.slice(0, 12) + "...");
-      setStep("registry",    "fail", "7. FAILED: Signer not in CourtKeyRegistry");
-      setStep("validity",    "pending", "8. —");
-      setStep("jurisdiction","pending", "9. —");
-      setStep("nonce",       "pending", "10. —");
-      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — unauthorized signer");
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe"].forEach(s => setStep(s, "pass", ""));
+      setStep("registry","fail","9. FAILED: Signer not in CourtKeyRegistry");
+      ["validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — unauthorized signer");
     } else if (reason.includes("Judicial key expired") || reason.includes("not yet valid")) {
-      setStep("expiry",      "pass", "1. Order not expired");
-      setStep("replay",      "pass", "2. Not a duplicate");
-      setStep("hash",        "pass", "3. Order hashed");
-      setStep("sign",        "pass", "4. Signed");
-      setStep("submit",      "pass", "5. Submitted");
-      setStep("recover",     "pass", "6. Signer recovered");
-      setStep("registry",    "pass", "7. Signer in registry");
-      setStep("validity",    "fail", "8. FAILED: Judicial key expired or not yet valid");
-      setStep("jurisdiction","pending", "9. —");
-      setStep("nonce",       "pending", "10. —");
-      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — key validity");
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry"].forEach(s => setStep(s, "pass", ""));
+      setStep("validity","fail","10. FAILED: Judicial key expired or not yet valid");
+      ["jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — key validity");
     } else if (reason.includes("jurisdiction")) {
-      setStep("expiry",      "pass", "1. Order not expired");
-      setStep("replay",      "pass", "2. Not a duplicate");
-      setStep("hash",        "pass", "3. Order hashed");
-      setStep("sign",        "pass", "4. Signed");
-      setStep("submit",      "pass", "5. Submitted");
-      setStep("recover",     "pass", "6. Signer recovered");
-      setStep("registry",    "pass", "7. Signer in registry");
-      setStep("validity",    "pass", "8. Key valid");
-      setStep("jurisdiction","fail", "9. FAILED: Court lacks territorial jurisdiction");
-      setStep("nonce",       "pending", "10. —");
-      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — wrong jurisdiction");
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity"].forEach(s => setStep(s, "pass", ""));
+      setStep("jurisdiction","fail","11. FAILED: Court lacks territorial jurisdiction");
+      ["quorum","nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — wrong jurisdiction");
+    } else if (reason.includes("JUDGE signature required") || reason.includes("CLERK or REGISTRAR")) {
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction"].forEach(s => setStep(s, "pass", ""));
+      setStep("quorum","fail","12. FAILED: " + reason);
+      ["nonce","pecuniary"].forEach(s => setStep(s, "pending", ""));
+      setStep("result", "fail", "15. " + actionLabel + " REJECTED — quorum role");
     } else if (reason.includes("Invalid nonce")) {
-      setStep("expiry",      "pass", "1. Order not expired");
-      setStep("replay",      "pass", "2. Not a duplicate");
-      setStep("hash",        "pass", "3. Order hashed");
-      setStep("sign",        "pass", "4. Signed");
-      setStep("submit",      "pass", "5. Submitted");
-      setStep("recover",     "pass", "6. Signer recovered");
-      setStep("registry",    "pass", "7. Signer in registry");
-      setStep("validity",    "pass", "8. Key valid");
-      setStep("jurisdiction","pass", "9. Jurisdiction valid");
-      setStep("nonce",       "fail", "10. FAILED: Invalid nonce (submitted " + nonce + ")");
-      setStep("result",      "fail", "11. " + actionLabel + " REJECTED — wrong nonce");
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum"].forEach(s => setStep(s, "pass", ""));
+      setStep("nonce","fail","13. FAILED: Invalid nonce (submitted " + nonce + ")");
+      setStep("pecuniary","pending","");
+      setStep("result","fail","15. " + actionLabel + " REJECTED — wrong nonce");
+    } else if (reason.includes("pecuniary limit")) {
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce"].forEach(s => setStep(s, "pass", ""));
+      setStep("pecuniary","fail","14. FAILED: Parcel value exceeds court pecuniary limit");
+      setStep("result","fail","15. " + actionLabel + " REJECTED — pecuniary jurisdiction");
     } else if (reason.includes("not frozen")) {
-      setStep("expiry",      "pass", "1. Order not expired");
-      setStep("replay",      "pass", "2. Not a duplicate");
-      setStep("hash",        "pass", "3. Order hashed");
-      setStep("sign",        "pass", "4. Signed");
-      setStep("submit",      "pass", "5. Submitted");
-      setStep("recover",     "pass", "6. Signer recovered");
-      setStep("registry",    "pass", "7. Signer in registry");
-      setStep("validity",    "pass", "8. Key valid");
-      setStep("jurisdiction","pass", "9. Jurisdiction valid");
-      setStep("nonce",       "pass", "10. Nonce valid");
-      setStep("result",      "fail", "11. UNFREEZE REJECTED — token is not frozen");
+      ["expiry","replay","hash","sign","preview","submit","recover","nodupe","registry","validity","jurisdiction","quorum","nonce","pecuniary"].forEach(s => setStep(s, "pass", ""));
+      setStep("result","fail","15. UNFREEZE REJECTED — token is not frozen");
     } else {
-      setStep("submit", "fail", "5. Transaction failed: " + reason);
-      setStep("result", "fail", "11. ERROR");
+      setStep("submit","fail","6. Transaction failed: " + reason);
+      setStep("result","fail","15. ERROR");
     }
 
     showResult("fail",
       actionLabel + " REJECTED",
-      "<strong>Reason:</strong> " + reason + "<br><strong>Signer:</strong> " + signer.address
+      "<strong>Reason:</strong> " + reason + "<br><strong>Judge:</strong> " + judge.address
     );
   }
 }
