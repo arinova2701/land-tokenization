@@ -2,3 +2,8 @@ node_modules/
 artifacts/
 cache/
 .DS_Store
+demo-wallets.json
+.env
+*.keystore
+keystore/
+besu-data/
