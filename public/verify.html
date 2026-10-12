@@ -37,6 +37,7 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
     "function parcelDeclaredValue(uint256) view returns (uint256)",
     "function courtLevelMaxValue(uint8) view returns (uint256)",
     "function judgeNonce(address) view returns (uint256)",
+    "function quorumThreshold() view returns (uint256)",
     "function usedOrders(bytes32) view returns (bool)",
     "function getOrderChecks(uint256,bytes32,uint256,uint256,bytes[]) view returns (uint256)",
     "function getFreezeHistoryLength(uint256) view returns (uint256)",
@@ -75,6 +76,8 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
     if (order.orderHash && order.orderHash.toLowerCase() !== hash.toLowerCase()) errors.push("Supplied orderHash differs from the recomputed digest");
     const block = accepted?.block || await provider.getBlock("latest");
     const atBlock = {blockTag:block.number};
+    const threshold = await contract.quorumThreshold(atBlock);
+    if (signatures.length < Number(threshold)) errors.push(`Signatures below quorum threshold: ${signatures.length}/${threshold}`);
     if (Number(block.timestamp) > Number(order.orderExpiry)) {
       if (!accepted) errors.push(names.EXPIRY);
       else details.push("Order is expired now; checked against the acceptance block");
@@ -89,6 +92,7 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
       const role = roles[Number(key.role)] || "Unknown";
       details.push(`Signature ${i+1}: ${role} ${key.courtName || "(no court)"} · ${address} · level ${key.courtLevel}`);
       if (order.signatures[i]?.signer && order.signatures[i].signer.toLowerCase() !== address.toLowerCase()) errors.push(`Signature ${i+1}: claimed signer differs from recovered address`);
+      if (order.signatures[i]?.role && ![role.toLowerCase(),String(Number(key.role))].includes(String(order.signatures[i].role).toLowerCase())) errors.push(`Signature ${i+1}: claimed role differs from on-chain role ${role}`);
       if (!key.active) errors.push(`Signature ${i+1}: ${names.REGISTRY}`);
       if (Number(block.timestamp) < Number(key.validFrom) || Number(block.timestamp) > Number(key.validUntil)) errors.push(`Signature ${i+1}: ${names.VALIDITY}`);
       if (Number(key.role) !== 3) {
