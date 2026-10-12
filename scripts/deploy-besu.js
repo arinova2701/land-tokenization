@@ -1,8 +1,8 @@
 /**
  * deploy-besu.js
  *
- * Deploys CourtKeyRegistry to the 4-node Besu QBFT network and writes
- * public/config.json so the frontend works against Besu.
+ * Deploys ParcelToken + CourtKeyRegistry to the 4-node Besu QBFT network
+ * and writes public/config.json so the frontend works against Besu.
  *
  * Prerequisites:
  *   node docker/generate-keys.js          (once, to create keys + genesis)
@@ -14,12 +14,10 @@
  *
  * Behavioral differences vs Hardhat localhost:
  *   - Block time is ~2s (QBFT blockperiodseconds=2), not instant.
- *     waitForDeployment() and receipt.wait() each take at least one block.
  *   - Gas price: Besu is configured with --min-gas-price=0, so free txs work.
- *   - Chain ID: 1337 (same as Hardhat default, so no MetaMask reconfiguration
- *     is needed if you already have localhost:8545 pointed at Hardhat).
- *   - Accounts: the first 10 Hardhat deterministic accounts are pre-funded in
- *     genesis alloc, so signers[0..4] work exactly as on the local node.
+ *   - Chain ID: 1337 (same as Hardhat default).
+ *   - Accounts: the first 5 Hardhat deterministic accounts are pre-funded
+ *     in genesis alloc, so signers[0..4] work on both the local node and Besu.
  */
 
 const hre = require("hardhat");
@@ -30,24 +28,35 @@ async function main() {
   console.log("Network: Besu QBFT (chain ID 1337)");
   console.log("Deploying from:", admin.address);
 
+  // Deploy ParcelToken (ERC-3643-compatible subset) — Step 3
+  const TokenFactory = await hre.ethers.getContractFactory("ParcelToken");
+  const token = await TokenFactory.deploy();
+  await token.waitForDeployment();
+  const tokenAddress = await token.getAddress();
+  console.log("ParcelToken deployed at:", tokenAddress);
+
+  // Deploy CourtKeyRegistry
   const Factory = await hre.ethers.getContractFactory("CourtKeyRegistry");
-  const contract = await Factory.deploy();
+  const contract = await Factory.deploy(tokenAddress);
   await contract.waitForDeployment();
   const address = await contract.getAddress();
 
-  console.log("Contract deployed at:", address);
+  console.log("CourtKeyRegistry deployed at:", address);
   console.log("Admin (Registrar):", admin.address);
   console.log("Judge (TN):", judge.address);
   console.log("Judge (outside TN):", outsideJudge.address);
 
+  // Set registry as token agent
+  await (await token.setAgent(address)).wait();
+  console.log("Token agent set to CourtKeyRegistry");
+
   // Territory codes
-  const vellore      = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("vellore"));
-  const chennai      = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("chennai"));
-  const tamilNadu    = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("tamil_nadu"));
-  const kadapa       = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("kadapa"));
+  const vellore       = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("vellore"));
+  const chennai       = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("chennai"));
+  const tamilNadu     = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("tamil_nadu"));
+  const kadapa        = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("kadapa"));
   const andhraPradesh = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("andhra_pradesh"));
 
-  // Territory hierarchy
   await (await contract.setTerritory(tamilNadu,     "Tamil Nadu",     hre.ethers.ZeroHash)).wait();
   await (await contract.setTerritory(vellore,       "Vellore",        tamilNadu)).wait();
   await (await contract.setTerritory(chennai,       "Chennai",        tamilNadu)).wait();
@@ -55,41 +64,39 @@ async function main() {
   await (await contract.setTerritory(kadapa,        "Kadapa",         andhraPradesh)).wait();
   console.log("Territories configured");
 
-  // Properties
-  await (await contract.registerProperty(1, vellore)).wait();
-  await (await contract.registerProperty(2, chennai)).wait();
-  await (await contract.registerProperty(3, kadapa)).wait();
-  console.log("Properties registered");
+  // Properties with declared values (Step 2)
+  await (await contract.registerProperty(1, vellore, 5_000_000)).wait();
+  await (await contract.registerProperty(2, chennai, 5_000_000)).wait();
+  await (await contract.registerProperty(3, kadapa,  200_000)).wait();
+  console.log("Properties registered with declared values");
 
-  // Judges
   const now     = Math.floor(Date.now() / 1000);
   const oneYear = now + 365 * 24 * 3600;
 
   await (await contract.registerJudge(
-    judge.address,
-    "District Court Vellore",
-    0, oneYear,
-    3,       // District Court
-    vellore
+    judge.address, "District Court Vellore", 0, oneYear, 3, vellore, 1
   )).wait();
-  console.log("Judge 1 registered: District Court Vellore");
+  console.log("Judge 1 registered: District Court Vellore (ROLE_JUDGE)");
 
   await (await contract.registerJudge(
-    outsideJudge.address,
-    "III Additional Junior Civil Judge Kadapa",
-    0, oneYear,
-    1,       // Munsif-level
-    kadapa
+    outsideJudge.address, "III Additional Junior Civil Judge Kadapa", 0, oneYear, 1, kadapa, 1
   )).wait();
-  console.log("Judge 2 registered: Civil Judge Kadapa (AP)");
+  console.log("Judge 2 registered: Civil Judge Kadapa (ROLE_JUDGE)");
+
+  await (await contract.registerJudge(
+    admin.address, "Land Registry Authority", 0, oneYear, 4, tamilNadu, 3
+  )).wait();
+  console.log("Admin registered as ROLE_REGISTRAR (national co-signer)");
 
   // Write config for frontend
   const config = {
-    contractAddress:    address,
-    adminAddress:       admin.address,
-    judgeAddress:       judge.address,
+    contractAddress:     address,
+    parcelTokenAddress:  tokenAddress,
+    adminAddress:        admin.address,
+    judgeAddress:        judge.address,
     outsideJudgeAddress: outsideJudge.address,
-    network:            "besu",
+    registrarAddress:    admin.address,
+    network:             "besu",
     territories: {
       vellore,
       chennai,
