@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "bitmaskWidth": 13,
+  "freezeCheckCount": 12,
+  "unfreezeCheckCount": 13,
+  "checks": [
+    {
+      "bit": 0,
+      "id": "EXPIRY",
+      "name": "Order not expired",
+      "description": "Block timestamp is at or before the order's orderExpiry field.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 1,
+      "id": "REPLAY",
+      "name": "Not a replay",
+      "description": "The order hash has not been submitted before (usedOrders mapping).",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 2,
+      "id": "RECOVER",
+      "name": "Signatures recovered",
+      "description": "Every signature in the array recovers to a valid non-zero address.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 3,
+      "id": "NO_DUPE",
+      "name": "No duplicate signers",
+      "description": "All recovered signer addresses are distinct.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 4,
+      "id": "REGISTRY",
+      "name": "Signers in registry",
+      "description": "Every recovered signer is active in the CourtKeyRegistry.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 5,
+      "id": "VALIDITY",
+      "name": "Keys within validity window",
+      "description": "Block timestamp is between validFrom and validUntil for every signer.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 6,
+      "id": "JURISDICTION",
+      "name": "Territorial jurisdiction",
+      "description": "Each JUDGE and CLERK signer's territory matches or is a parent of the parcel's territory. REGISTRAR is exempt (national authority).",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 7,
+      "id": "QUORUM_JUDGE",
+      "name": "Judge present",
+      "description": "At least one signer holds ROLE_JUDGE.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 8,
+      "id": "QUORUM_CLERK",
+      "name": "Clerk present",
+      "description": "At least one signer holds ROLE_CLERK.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 9,
+      "id": "NONCE",
+      "name": "Nonce valid",
+      "description": "The provided nonce equals the primary judge's current judgeNonce counter.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 10,
+      "id": "PECUNIARY",
+      "name": "Pecuniary jurisdiction",
+      "description": "The parcel's declared value does not exceed the judge's court-level maximum.",
+      "actions": ["freeze", "unfreeze"]
+    },
+    {
+      "bit": 11,
+      "id": "FROZEN_STATE",
+      "name": "Token is frozen",
+      "description": "The parcel token is currently frozen. Required before an unfreeze order can be accepted.",
+      "actions": ["unfreeze"]
+    },
+    {
+      "bit": 12,
+      "id": "QUORUM_REGISTRAR",
+      "name": "Registrar present",
+      "description": "At least one signer holds ROLE_REGISTRAR.",
+      "actions": ["freeze", "unfreeze"]
+    }
+  ]
+}

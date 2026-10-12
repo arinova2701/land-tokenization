@@ -53,5 +53,60 @@
     return signer.signMessage(ethers.getBytes(orderHash));
   }
 
-  window.NyayaWallet = { connectWallet, onWalletChange, signOrderHash };
+  // ── Session ──────────────────────────────────────────────────────────────────
+  // _session is kept in sync by _refreshSession and updated on account/chain change.
+  let _session = null;
+
+  /**
+   * Re-reads the on-chain role for the current account and updates _session.
+   * Fires "nyaya:session-changed" on window after every update.
+   */
+  async function _refreshSession() {
+    try {
+      if (!window.ethereum) { _session = null; _fireSessionChanged(); return; }
+      const accounts = await window.ethereum.request({ method: "eth_accounts" });
+      if (!accounts || accounts.length === 0) { _session = null; _fireSessionChanged(); return; }
+
+      const address = accounts[0];
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const config = await fetch("/config.json").then(r => r.json());
+      const abi = [
+        "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)"
+      ];
+      const contract = new ethers.Contract(config.contractAddress, abi, provider);
+      const key = await contract.registry(address);
+      const roleMap = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
+      _session = {
+        address,
+        role: key.active ? (roleMap[Number(key.role)] || null) : null,
+        courtName: key.courtName || ""
+      };
+    } catch (_) {
+      _session = null;
+    }
+    _fireSessionChanged();
+  }
+
+  function _fireSessionChanged() {
+    window.dispatchEvent(new CustomEvent("nyaya:session-changed", { detail: _session }));
+  }
+
+  /**
+   * Returns the current session synchronously, or null if not connected.
+   * Shape: { address, role: "JUDGE"|"CLERK"|"REGISTRAR"|null, courtName }
+   */
+  function getSession() {
+    return _session;
+  }
+
+  // Keep session in sync with MetaMask account/chain changes.
+  if (window.ethereum) {
+    window.ethereum.on("accountsChanged", _refreshSession);
+    window.ethereum.on("chainChanged", () => window.location.reload());
+  }
+
+  // Auto-reconnect on load (no popup) and initialise session.
+  _refreshSession();
+
+  window.NyayaWallet = { connectWallet, onWalletChange, signOrderHash, getSession };
 })();
