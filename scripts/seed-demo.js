@@ -2,6 +2,7 @@
  * scripts/seed-demo.js
  *
  * Seeds the demo state on a freshly deployed Besu chain:
+ *  - Registers the demo registrar wallet as ROLE_REGISTRAR (national authority)
  *  - Registers the judge key (ROLE_JUDGE, Vellore territory, District Court level 3)
  *  - Registers the clerk key (ROLE_CLERK, Vellore territory, District Court level 3)
  *  - Sets court level value limits
@@ -14,17 +15,29 @@
  *   demo-wallets.json  — wallets created by setup-demo-wallets.js
  *   public/config.json — deployed contract addresses
  *
+ * Environment variables:
+ *   RPC_URL    — defaults to http://127.0.0.1:8545
+ *   ADMIN_KEY  — private key of the on-chain contract admin (the account that
+ *                deployed the contracts via deploy-besu.js). Defaults to the
+ *                first Hardhat deterministic key, which is the pre-funded admin
+ *                in docker/genesis.json. This key is a well-known test fixture
+ *                and must never be used on a network holding real value.
+ *
  * Usage:
  *   node scripts/seed-demo.js
+ *   ADMIN_KEY=0x... node scripts/seed-demo.js   # override admin key
  *
  * Requires Besu to be running and contracts deployed.
- * Set RPC_URL if not using the default http://127.0.0.1:8545.
  */
 
 const { ethers } = require("ethers");
 const fs = require("fs");
 
 const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
+// Default: Hardhat deterministic account #0 — public test fixture, pre-funded in genesis.
+// Never use on a live network holding real value.
+const ADMIN_KEY = process.env.ADMIN_KEY ||
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 const ABI = [
   "function admin() view returns (address)",
@@ -56,30 +69,47 @@ async function main() {
   const network  = await provider.getNetwork();
   console.log("Network chain ID:", network.chainId.toString());
 
-  const registrarWallet = new ethers.Wallet(wallets.registrar.privateKey, provider);
-  const contract = new ethers.Contract(config.contractAddress, ABI, registrarWallet);
+  // Admin signer: must match on-chain contract admin
+  const adminSigner = new ethers.Wallet(ADMIN_KEY, provider);
+  const contract = new ethers.Contract(config.contractAddress, ABI, adminSigner);
 
-  // Verify the demo registrar matches the on-chain admin
   const onChainAdmin = await contract.admin();
-  if (registrarWallet.address.toLowerCase() !== onChainAdmin.toLowerCase()) {
+  if (adminSigner.address.toLowerCase() !== onChainAdmin.toLowerCase()) {
     throw new Error(
-      "demo-wallets.json registrar (" + registrarWallet.address + ") does not match on-chain admin (" + onChainAdmin + ").\n" +
-      "The chain may have been reset without re-running setup-demo-wallets.js with --force, or the wrong wallet was created."
+      "ADMIN_KEY address (" + adminSigner.address + ") does not match on-chain admin (" + onChainAdmin + ").\n" +
+      "Pass the correct admin private key via the ADMIN_KEY environment variable."
     );
   }
+  console.log("Admin:", adminSigner.address);
 
-  const vellore   = ethers.keccak256(ethers.toUtf8Bytes("vellore"));
-  const kadapa    = ethers.keccak256(ethers.toUtf8Bytes("kadapa"));
-  const tamilNadu = ethers.keccak256(ethers.toUtf8Bytes("tamil_nadu"));
+  const vellore    = ethers.keccak256(ethers.toUtf8Bytes("vellore"));
+  const kadapa     = ethers.keccak256(ethers.toUtf8Bytes("kadapa"));
+  const tamilNadu  = ethers.keccak256(ethers.toUtf8Bytes("tamil_nadu"));
 
   const now     = Math.floor(Date.now() / 1000);
   const oneYear = now + 365 * 24 * 3600;
 
+  // ── Register demo registrar wallet as ROLE_REGISTRAR ──────────────────────
+  const regInfo = await contract.registry(wallets.registrar.address);
+  if (regInfo.active) {
+    console.log("Demo registrar already registered:", wallets.registrar.address, "— skipping");
+  } else {
+    const tx = await contract.registerJudge(
+      wallets.registrar.address,
+      "Land Registry Authority (Demo)",
+      0, oneYear,
+      4,           // High Court level (highest authority)
+      tamilNadu,   // State-wide territory
+      3            // ROLE_REGISTRAR (national co-signer, territory-exempt)
+    );
+    await tx.wait();
+    console.log("Demo registrar registered:", wallets.registrar.address);
+  }
+
   // ── Register judge key ─────────────────────────────────────────────────────
   const judgeInfo = await contract.registry(wallets.judge.address);
   if (judgeInfo.active) {
-    console.log("Judge already registered:", wallets.judge.address,
-      "— skipping (reset chain and re-run with fresh wallets to re-seed)");
+    console.log("Judge already registered:", wallets.judge.address, "— skipping");
   } else {
     const tx = await contract.registerJudge(
       wallets.judge.address,
@@ -111,7 +141,6 @@ async function main() {
   }
 
   // ── Set court level value limits ───────────────────────────────────────────
-  // Only set if not already configured (courtLevelMaxValue[3] = District Court = ₹1Cr)
   const existingMax = await contract.courtLevelMaxValue(3);
   if (existingMax.toString() === "0") {
     await (await contract.setCourtLevelMaxValue(1, 300_000)).wait();     // Munsif: ₹3L
