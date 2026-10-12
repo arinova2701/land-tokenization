@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Independent order verification · NyayaChain</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<style>
+body{font:16px/1.5 system-ui,sans-serif;background:#f5f7fb;color:#16233b;margin:0}
+header{background:#0b1736;color:white;padding:20px max(24px,calc((100vw - 960px)/2))}
+header a{color:#dbeafe}main{max-width:960px;margin:auto;padding:32px 20px}
+h1{margin:.4rem 0}h2{margin:0 0 .8rem}p{color:#526178}
+.card{background:white;border:1px solid #d9e1ed;border-radius:12px;padding:22px;margin:20px 0}
+label{display:block;font-weight:700;margin:14px 0 5px}
+input,textarea{width:100%;box-sizing:border-box;border:1px solid #aebbd0;border-radius:7px;padding:11px;font:inherit}
+textarea{min-height:150px}button{background:#2563eb;color:white;border:0;border-radius:7px;padding:11px 18px;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}
+button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{color:#7c5600}
+.result{overflow-wrap:anywhere}.result li{margin:.4rem 0}.mono{font-family:ui-monospace,monospace;font-size:.9em}
+</style>
+</head>
+<body>
+<header><a href="index.html">← Citizen portal</a><h1>Independent order verification</h1></header>
+<main>
+<p>Reads the local Besu chain directly. Enter a transaction hash for proof of acceptance, or order JSON to check a proposed order. No wallet is needed.</p>
+<div class="card"><h2>Verify a transaction</h2><label for="tx">Transaction hash</label><input id="tx" placeholder="0x… 64 hexadecimal characters"><button id="verify-tx">Verify transaction</button></div>
+<div class="card"><h2>Check order JSON</h2><p>Fields: tokenId, action, caseNumber, orderExpiry, nonce, orderHash (optional), signatures (array of hex signatures or objects with signature).</p><label for="json">Order JSON</label><textarea id="json" spellcheck="false"></textarea><button id="verify-json">Check order</button></div>
+<div class="card result" id="result" aria-live="polite">Enter a transaction hash or order JSON.</div>
+</main>
+<script>
+(async function () {
+  const el = document.getElementById("result");
+  const ABI = [
+    "function submitFreezeOrder(uint256 tokenId,string caseNumber,bytes32 orderHash,uint256 orderExpiry,uint256 nonce,bytes[] signatures)",
+    "function submitUnfreezeOrder(uint256 tokenId,string caseNumber,bytes32 orderHash,uint256 orderExpiry,uint256 nonce,bytes[] signatures)",
+    "function registry(address) view returns (string courtName,uint256 validFrom,uint256 validUntil,bool active,uint8 courtLevel,bytes32 territoryCode,uint8 role)",
+    "function propertyTerritory(uint256) view returns (bytes32)",
+    "function parentTerritory(bytes32) view returns (bytes32)",
+    "function parcelDeclaredValue(uint256) view returns (uint256)",
+    "function courtLevelMaxValue(uint8) view returns (uint256)",
+    "function judgeNonce(address) view returns (uint256)",
+    "function usedOrders(bytes32) view returns (bool)",
+    "function getOrderChecks(uint256,bytes32,uint256,uint256,bytes[]) view returns (uint256)",
+    "function getFreezeHistoryLength(uint256) view returns (uint256)",
+    "function getFreezeHistoryEntry(uint256,uint256) view returns (uint256 timestamp,string caseNumber,address signer,bool isFreezeAction,uint256 nonce,uint256 checksBitmask)",
+    "function getFreezeHistorySigners(uint256,uint256) view returns (address[] signers,uint8[] roles)",
+    "event OrderAccepted(uint256 indexed tokenId,address indexed signer,string caseNumber,uint256 nonce,uint256 checksBitmask,address[] signers,uint8[] roles)",
+    "event OrderVacated(uint256 indexed tokenId,address indexed signer,string caseNumber,uint256 nonce,uint256 checksBitmask,address[] signers,uint8[] roles)"
+  ];
+  const roles = {1:"Judge",2:"Clerk",3:"Registrar"};
+  const names = {EXPIRY:"Order expired",REPLAY:"Order already submitted",RECOVER:"Invalid signature",NO_DUPE:"Duplicate signer",REGISTRY:"Unregistered or revoked signer",VALIDITY:"Judicial key expired or not yet valid",JURISDICTION:"Signer lacks territorial jurisdiction",QUORUM_JUDGE:"Judge signature missing",QUORUM_CLERK:"Clerk signature missing",QUORUM_REGISTRAR:"Registrar signature missing",NONCE:"Invalid judge nonce",PECUNIARY:"Parcel value exceeds court pecuniary limit",FROZEN_STATE:"Token is not frozen"};
+  const html = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const show = (title, items, css) => { el.innerHTML = `<h2 class="${css}">${html(title)}</h2><ul>${items.map(x=>`<li>${html(x)}</li>`).join("")}</ul>`; };
+  let provider, contract, iface, checks, config;
+  try {
+    config = await (await fetch("config.json")).json();
+    checks = await (await fetch("checks.json")).json();
+    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    await provider.getNetwork();
+    if (await provider.getCode(config.contractAddress) === "0x") throw Error("Registry contract is absent from this chain");
+    iface = new ethers.Interface(ABI);
+    contract = new ethers.Contract(config.contractAddress, ABI, provider);
+  } catch (e) { show("Chain unavailable", [e.message], "bad"); return; }
+
+  async function check(order, accepted) {
+    const errors = [], details = [];
+    const action = order.action || "freeze";
+    if (!["freeze","unfreeze"].includes(action)) throw Error("Action must be freeze or unfreeze");
+    if (!/^\d+$/.test(String(order.tokenId)) || !/^\d+$/.test(String(order.nonce)) || !/^\d+$/.test(String(order.orderExpiry))) throw Error("Token, nonce and expiry must be unsigned integers");
+    if (typeof order.caseNumber !== "string" || !order.caseNumber) throw Error("Case number is required");
+    const signatures = (order.signatures || []).map(s => typeof s === "string" ? s : s.signature);
+    if (!Array.isArray(order.signatures) || signatures.some(s => !ethers.isHexString(s))) throw Error("Signatures must be hex strings");
+    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(["uint256","string","uint256","uint256"],[order.tokenId,order.caseNumber,order.orderExpiry,order.nonce]);
+    const hash = ethers.keccak256(encoded);
+    details.push(`Recomputed ABI-encoded keccak256 digest: ${hash}`);
+    details.push(`EIP-191 signed-message hash: ${ethers.hashMessage(ethers.getBytes(hash))}`);
+    if (order.orderHash && order.orderHash.toLowerCase() !== hash.toLowerCase()) errors.push("Supplied orderHash differs from the recomputed digest");
+    const block = accepted?.block || await provider.getBlock("latest");
+    if (Number(block.timestamp) > Number(order.orderExpiry)) {
+      if (!accepted) errors.push(names.EXPIRY);
+      else details.push("Order is expired now; checked against the acceptance block");
+    }
+    const recovered = [];
+    for (let i=0;i<signatures.length;i++) {
+      let address;
+      try { address = ethers.verifyMessage(ethers.getBytes(hash), signatures[i]); }
+      catch { errors.push(`Signature ${i+1}: invalid EIP-191 signature`); continue; }
+      recovered.push(address);
+      const key = await contract.registry(address);
+      const role = roles[Number(key.role)] || "Unknown";
+      details.push(`Signature ${i+1}: ${role} ${key.courtName || "(no court)"} · ${address} · level ${key.courtLevel}`);
+      if (order.signatures[i]?.signer && order.signatures[i].signer.toLowerCase() !== address.toLowerCase()) errors.push(`Signature ${i+1}: claimed signer differs from recovered address`);
+      if (!key.active) errors.push(`Signature ${i+1}: ${names.REGISTRY}`);
+      if (Number(block.timestamp) < Number(key.validFrom) || Number(block.timestamp) > Number(key.validUntil)) errors.push(`Signature ${i+1}: ${names.VALIDITY}`);
+      if (Number(key.role) !== 3) {
+        const parcel = await contract.propertyTerritory(order.tokenId);
+        const parent = await contract.parentTerritory(parcel);
+        if (key.territoryCode !== parcel && key.territoryCode !== parent) errors.push(`Signature ${i+1}: ${names.JURISDICTION}`);
+      }
+    }
+    if (new Set(recovered.map(a=>a.toLowerCase())).size !== recovered.length) errors.push(names.NO_DUPE);
+    const signerRoles = await Promise.all(recovered.map(async a => Number((await contract.registry(a)).role)));
+    for (const [number, name] of [[1,"QUORUM_JUDGE"],[2,"QUORUM_CLERK"],[3,"QUORUM_REGISTRAR"]]) {
+      if (!signerRoles.includes(number)) errors.push(names[name]);
+    }
+    const judge = recovered[signerRoles.indexOf(1)];
+    if (judge && !accepted) {
+      const expected = await contract.judgeNonce(judge);
+      if (BigInt(order.nonce) !== expected) errors.push(`${names.NONCE}: expected ${expected}, got ${order.nonce}`);
+    }
+    if (judge) {
+      const key = await contract.registry(judge);
+      const [value, max] = await Promise.all([contract.parcelDeclaredValue(order.tokenId),contract.courtLevelMaxValue(key.courtLevel)]);
+      details.push(`Pecuniary: ₹${value.toLocaleString("en-IN")} declared vs ₹${max.toLocaleString("en-IN")} court limit`);
+      if (value > max) errors.push(names.PECUNIARY);
+    }
+    if (!accepted) {
+      const bits = BigInt(await contract.getOrderChecks(order.tokenId,hash,order.orderExpiry,order.nonce,signatures));
+      details.push(`On-chain preflight bitmask: 0x${bits.toString(16)}`);
+      // The first unset bit is the contract's failure point. Later bits may be unset because checking stopped.
+      const first = checks.checks.find(ch => ch.actions.includes(action) && !(bits & (1n << BigInt(ch.bit))));
+      if (first && !errors.length) errors.push(names[first.id] || first.name);
+      if (await contract.usedOrders(hash)) errors.push(names.REPLAY);
+    } else {
+      details.push(`Stored acceptance checks: 0x${accepted.bitmask.toString(16)}`);
+      const required = checks.checks.filter(ch=>ch.actions.includes(action));
+      for (const ch of required) if (!(accepted.bitmask & (1n << BigInt(ch.bit)))) errors.push(`Stored check failed: ${ch.name}`);
+      if (accepted.signers.length !== recovered.length || accepted.signers.some((s,i)=>s.toLowerCase() !== recovered[i]?.toLowerCase())) errors.push("Event signer list differs from recovered signatures");
+      if (accepted.roles.some((r,i)=>Number(r)!==signerRoles[i])) errors.push("Event roles differ from registry roles");
+    }
+    return { errors, details, recovered, signerRoles, hash };
+  }
+  document.getElementById("verify-json").onclick = async () => {
+    try {
+      const order = JSON.parse(document.getElementById("json").value);
+      const result = await check(order);
+      show(result.errors.length ? "Not verified" : "Signatures and current preflight checks pass; no acceptance proof", [...result.errors,...result.details],result.errors.length?"bad":"pending");
+    } catch (e) { show("Not verified",[e.shortMessage||e.message],"bad"); }
+  };
+  document.getElementById("verify-tx").onclick = async () => {
+    try {
+      const hash = document.getElementById("tx").value.trim();
+      if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw Error("Enter a 32-byte transaction hash");
+      const [tx,receipt] = await Promise.all([provider.getTransaction(hash),provider.getTransactionReceipt(hash)]);
+      if (!tx || !receipt) throw Error("Transaction not found or not yet mined");
+      if (tx.to?.toLowerCase() !== config.contractAddress.toLowerCase()) throw Error("Transaction did not call this CourtKeyRegistry");
+      if (receipt.status !== 1) throw Error("Transaction reverted");
+      const parsed = iface.parseTransaction({data:tx.data,value:tx.value});
+      if (!["submitFreezeOrder","submitUnfreezeOrder"].includes(parsed?.name)) throw Error("Transaction is not an order submission");
+      const args = parsed.args;
+      const order = {tokenId:args.tokenId.toString(),caseNumber:args.caseNumber,orderHash:args.orderHash,orderExpiry:args.orderExpiry.toString(),nonce:args.nonce.toString(),signatures:args.signatures,action:parsed.name==="submitFreezeOrder"?"freeze":"unfreeze"};
+      const event = receipt.logs.filter(log=>log.address.toLowerCase()===config.contractAddress.toLowerCase()).map(log=>{try{return iface.parseLog(log)}catch{return null}}).find(log=>log?.name===(order.action==="freeze"?"OrderAccepted":"OrderVacated"));
+      if (!event) throw Error("No matching order acceptance event in receipt");
+      const block = await provider.getBlock(receipt.blockNumber);
+      const n = Number(await contract.getFreezeHistoryLength(order.tokenId));
+      let historyMatch = false;
+      for(let i=0;i<n;i++){
+        const h=await contract.getFreezeHistoryEntry(order.tokenId,i);
+        const hs=await contract.getFreezeHistorySigners(order.tokenId,i);
+        if(h.caseNumber===order.caseNumber && h.nonce===args.nonce && h.isFreezeAction===(order.action==="freeze") && h.checksBitmask===event.args.checksBitmask && hs.signers.length===event.args.signers.length && hs.signers.every((s,j)=>s.toLowerCase()===event.args.signers[j].toLowerCase())){historyMatch=true;break}
+      }
+      const result=await check(order,{block,bitmask:BigInt(event.args.checksBitmask),signers:event.args.signers,roles:event.args.roles});
+      if(!historyMatch)result.errors.push("No matching stored history entry");
+      if(BigInt(event.args.tokenId)!==args.tokenId || event.args.caseNumber!==args.caseNumber || event.args.nonce!==args.nonce)result.errors.push("Receipt event differs from transaction input");
+      const labels = result.recovered.map((s,i)=>`${roles[result.signerRoles[i]]||"Unknown"} ${s}`);
+      show(result.errors.length?"Not verified":`Verified: signed by ${labels.join(", ")}`,[...result.errors,`Block ${receipt.blockNumber} · transaction ${hash}`,...result.details],result.errors.length?"bad":"ok");
+    } catch(e){show("Not verified",[e.shortMessage||e.message],"bad")}
+  };
+  const query=new URLSearchParams(location.search).get("tx");
+  if(query){document.getElementById("tx").value=query;document.getElementById("verify-tx").click()}
+})();
+</script>
+</body></html>
