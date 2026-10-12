@@ -317,6 +317,20 @@ footer {
 .switch input:checked + .track { background: #2563EB; }
 .switch input:checked + .track::after { transform: translateX(20px); }
 .switch input:focus-visible + .track { outline: 3px solid rgba(37,99,235,.35); }
+.inbox { padding: 4px 0 20px; border-bottom: 1px solid #E2E8F0; }
+.inbox-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.inbox-title { font-size: 20px; font-weight: 700; color: #0F172A; font-family: 'Aileron', system-ui, sans-serif; }
+.light { width: 11px; height: 11px; border-radius: 50%; background: #CBD5E1; flex-shrink: 0; }
+.light.up { background: #16A34A; box-shadow: 0 0 0 3px rgba(22,163,74,.2); }
+.light.down { background: #DC2626; box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+.light-text { font-size: 15px; color: #64748B; }
+.inbox-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid #F1F5F9; flex-wrap: wrap; }
+.inbox-row .what { flex: 1; min-width: 220px; font-size: 17px; color: #0F172A; }
+.inbox-row .meta { display: block; font-size: 14px; color: #64748B; font-family: monospace; word-break: break-all; }
+.inbox-row .btn { padding: 7px 16px; font-size: 16px; }
+.chip { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: #E2E8F0; color: #475569; letter-spacing: .04em; text-transform: uppercase; }
+.chip.ready { background: #DBEAFE; color: #1D4ED8; }
+.chip.submitted { background: #DCFCE7; color: #15803D; }
 #inspector-root { display: none; }
 #inspector-root.open { display: block; }
 @media (max-width: 640px) { .slots { grid-template-columns: 1fr; } }
@@ -352,6 +366,17 @@ footer {
 
   <!-- Shared session header (role badge, address, sign out) — rendered by NyayaWallet.mountHeader -->
   <div id="session-header"></div>
+
+  <!-- ── Inbox (coordination service: an untrusted off-chain mailbox) ── -->
+  <section class="inbox" id="inbox">
+    <div class="inbox-head">
+      <span class="inbox-title" id="inbox-title">Inbox</span>
+      <span class="light" id="svc-light" role="img" aria-label="Mailbox status unknown"></span>
+      <span class="light-text" id="svc-text">Checking mailbox…</span>
+    </div>
+    <div id="inbox-list"></div>
+    <div id="inbox-msg"></div>
+  </section>
 
   <!-- ── Step 1: Create order (judge) ── -->
   <section class="step-card" id="step1">
@@ -607,6 +632,9 @@ async function init() {
     onSession: adoptSession
   });
   renderAll();
+
+  pingService();
+  setInterval(pingService, 10000);
 }
 
 // Called by the shared header whenever the (allowed) session is set or changes.
@@ -618,6 +646,7 @@ async function adoptSession(session) {
     try { $("court-nonce").value = (await contract.judgeNonce(connectedAddress)).toString(); } catch (_) {}
   }
   renderAll();
+  refreshInbox();
 }
 
 // Parcels come from PropertyRegistered events; territory, value and frozen state are read live.
@@ -717,6 +746,7 @@ async function signDraft() {
     setMsg("step1-msg", "", "");
     emitOrder();
     renderAll();
+    publish("order");
   } catch (e) {
     setMsg("step1-msg", "error", e && (e.code === 4001 || e.code === "ACTION_REJECTED") ? "Signing was cancelled in your wallet." : "Signing failed: " + (e.shortMessage || e.message));
   } finally {
@@ -735,17 +765,122 @@ async function coSign(role) {
     order.signatures.push({ signer: connectedAddress, role, signature });
     emitOrder();
     renderAll();
+    publish("signature", { signer: connectedAddress, role, signature });
   } catch (e) {
     setMsg("step2-msg", "error", e && (e.code === 4001 || e.code === "ACTION_REJECTED") ? "Signing was cancelled in your wallet." : "Signing failed: " + (e.shortMessage || e.message));
   }
 }
 
-function exportJson() {
-  return JSON.stringify({
+function orderPayload() {
+  return {
     version: 1, tokenId: order.tokenId, action: order.action, caseNumber: order.caseNumber,
     orderExpiry: order.orderExpiry, nonce: order.nonce, orderHash: order.orderHash,
     signatures: order.signatures.map(s => ({ signer: s.signer, role: s.role, signature: s.signature }))
-  }, null, 2);
+  };
+}
+function exportJson() { return JSON.stringify(orderPayload(), null, 2); }
+
+// ── Mailbox (coordination service) ──────────────────────────────────────────
+// An untrusted off-chain mailbox on localhost. It only carries orders between signers.
+// If it is down, export/import keeps working exactly the same.
+
+const SERVICE = "http://127.0.0.1:3001";
+let serviceUp = false;
+
+async function svc(path, opts) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 2500);
+  try {
+    const r = await fetch(SERVICE + path, { ...opts, signal: ctl.signal,
+      headers: opts && opts.body ? { "Content-Type": "application/json" } : undefined });
+    const data = await r.json().catch(() => null);
+    if (!r.ok) throw Object.assign(new Error((data && data.error) || "HTTP " + r.status), { status: r.status });
+    return data;
+  } finally { clearTimeout(timer); }
+}
+
+// Best-effort publishing: a failure only means the signer hands over by export/import instead.
+async function publish(kind, extra) {
+  if (!order || !serviceUp) return;
+  try {
+    if (kind === "order") await svc("/orders", { method: "POST", body: JSON.stringify(orderPayload()) });
+    else if (kind === "signature") {
+      try { await svc("/orders/" + order.orderHash + "/signatures", { method: "POST", body: JSON.stringify(extra) }); }
+      catch (e) { if (e.status === 404) await svc("/orders", { method: "POST", body: JSON.stringify(orderPayload()) }); else throw e; }
+    } else if (kind === "submitted") {
+      try { await svc("/orders/" + order.orderHash + "/submitted", { method: "POST", body: JSON.stringify({ txHash: order.txHash }) }); }
+      catch (e) { if (e.status === 404) { await svc("/orders", { method: "POST", body: JSON.stringify(orderPayload()) }); await svc("/orders/" + order.orderHash + "/submitted", { method: "POST", body: JSON.stringify({ txHash: order.txHash }) }); } else throw e; }
+    }
+  } catch (e) { console.warn("Mailbox publish failed (export/import still works):", e.message); }
+  refreshInbox();
+}
+
+function renderLight() {
+  const light = $("svc-light");
+  light.className = "light " + (serviceUp ? "up" : "down");
+  light.setAttribute("aria-label", serviceUp ? "Mailbox online" : "Mailbox offline");
+  $("svc-text").textContent = serviceUp
+    ? "Mailbox online (an untrusted off-chain relay; every order is re-checked here)"
+    : "Mailbox offline: use Export and Import in step 2 to hand orders over";
+}
+
+async function pingService() {
+  try { await svc("/health"); serviceUp = true; } catch (_) { serviceUp = false; }
+  renderLight();
+  refreshInbox();
+}
+
+async function refreshInbox() {
+  const list = $("inbox-list");
+  if (!connectedRole) return;
+  const isJudge = connectedRole === "JUDGE";
+  $("inbox-title").textContent = isJudge ? "My orders" : "Orders awaiting your signature";
+  if (!serviceUp) { list.replaceChildren(); return; }
+  let items;
+  try {
+    items = isJudge ? await svc("/orders") : await svc("/orders?roleAwaiting=" + connectedRole);
+  } catch (_) { return; }
+  if (!Array.isArray(items)) return;
+  const now = Math.floor(Date.now() / 1000);
+  // Untrusted data: keep only well-formed entries, and for judges only orders their own key signed.
+  items = items.filter(o => o && Number.isInteger(o.tokenId) && typeof o.caseNumber === "string" && Array.isArray(o.signatures) &&
+    typeof o.orderHash === "string" && (o.action === "freeze" || o.action === "unfreeze") && Number.isInteger(o.orderExpiry) && Number.isInteger(o.nonce));
+  if (isJudge) {
+    const me = (connectedAddress || "").toLowerCase();
+    items = items.filter(o => o.signatures.some(s => s && s.role === "JUDGE" && String(s.signer).toLowerCase() === me));
+  } else {
+    items = items.filter(o => o.orderExpiry > now);
+  }
+  items = items.slice(0, 20);
+
+  list.replaceChildren();
+  if (!items.length) {
+    const p = document.createElement("div"); p.className = "hint";
+    p.textContent = isJudge ? "You have not created any orders yet." : "Nothing is waiting for your signature.";
+    list.appendChild(p); return;
+  }
+  for (const o of items) {
+    const row = document.createElement("div"); row.className = "inbox-row";
+    const what = document.createElement("div"); what.className = "what";
+    what.textContent = plainSummary(o);
+    const meta = document.createElement("span"); meta.className = "meta";
+    const n = Math.min(o.signatures.length, ROLES.length);
+    meta.textContent = n + " of " + ROLES.length + " signed" + (o.txHash ? " · tx " + String(o.txHash).slice(0, 18) + "…" : "");
+    what.appendChild(meta);
+    const chip = document.createElement("span");
+    const status = o.txHash ? "submitted" : (n >= ROLES.length ? "ready" : "collecting");
+    chip.className = "chip " + status; chip.textContent = status;
+    row.append(what, chip);
+    if (!o.txHash) {
+      const b = document.createElement("button"); b.className = "btn btn-outline"; b.textContent = "Open";
+      // Opening runs the full import validation against the chain; the mailbox is never trusted.
+      b.addEventListener("click", () => loadIncoming({ version: 1, tokenId: o.tokenId, action: o.action, caseNumber: o.caseNumber,
+        orderExpiry: o.orderExpiry, nonce: o.nonce, orderHash: o.orderHash,
+        signatures: o.signatures.map(s => ({ signer: s.signer, role: s.role, signature: s.signature })) }, "inbox-msg"));
+      row.appendChild(b);
+    }
+    list.appendChild(row);
+  }
 }
 
 class ImportError extends Error {}
@@ -807,7 +942,12 @@ async function importOrder() {
   let parsed;
   try { parsed = JSON.parse($("import-json").value.trim()); }
   catch (_) { setMsg(out, "error", "That is not valid JSON, so it cannot be an order."); return; }
+  await loadIncoming(parsed, out);
+}
 
+// The single way an order enters the page, whether pasted, uploaded or fetched from the mailbox.
+// Everything is verified here against the chain; nothing from the mailbox is trusted.
+async function loadIncoming(parsed, out) {
   try {
     const incoming = await validateImport(parsed);
     const sameOrder = order && order.orderHash.toLowerCase() === incoming.orderHash.toLowerCase();
@@ -825,9 +965,10 @@ async function importOrder() {
     }
     order.signatures.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
     $("import-json").value = ""; $("import-file").value = "";
-    setMsg(out, "ok", "Order imported: " + plainSummary(order) + ".");
+    setMsg(out, "ok", "Order loaded: " + plainSummary(order) + ".");
     emitOrder();
     renderAll();
+    if (out === "inbox-msg") $("step2").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     if (e instanceof ImportError) setMsg(out, "error", e.message);
     else setMsg(out, "error", "Could not check this order against the chain: " + (e.shortMessage || e.message));
@@ -917,6 +1058,7 @@ async function submitOrder() {
     order.status = "accepted"; order.checksBitmask = mask; order.txHash = receipt.hash;
     showResult(true, order.action === "freeze" ? "FREEZE ACCEPTED" : "UNFREEZE ACCEPTED", signers, receipt.blockNumber);
     emitOrder();
+    publish("submitted");
     await loadTokens();
     if (connectedRole === "JUDGE") { try { $("court-nonce").value = (await contract.judgeNonce(connectedAddress)).toString(); } catch (_) {} }
   } catch (e) {
