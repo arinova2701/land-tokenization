@@ -1,19 +1,22 @@
 /**
  * benchmark.js
  *
- * Submits 100 authenticated multi-signer freeze orders sequentially, measures
+ * Submits 100 authenticated three-signer freeze orders sequentially, measures
  * the wall-clock latency (tx-submit → receipt confirmed) for each, and prints
  * + saves stats.
  *
- * Each order is signed by both the judge (ROLE_JUDGE) and the admin
- * (ROLE_REGISTRAR) to satisfy the quorum requirement (Step 1).
+ * Sprint 0b: each order is signed by three wallets — judge (ROLE_JUDGE),
+ * clerk (ROLE_CLERK), and admin (ROLE_REGISTRAR) — satisfying the new
+ * three-signer quorum requirement.  The clerk wallet is created fresh
+ * (random) and funded from admin, so no genesis.json change is needed.
  *
  * Usage:
  *   npx hardhat run scripts/benchmark.js --network localhost   (Hardhat node)
  *   npx hardhat run scripts/benchmark.js --network besu        (4-node QBFT)
  *
- * Each run appends its results under a key matching the network name in:
- *   data/benchmark-results.json
+ * Besu results are saved under the key "besu_three_signer"; older keys
+ * (besu_multi_signer, besu_single_signer_legacy) are preserved.
+ * Hardhat localhost results are saved under "localhost".
  */
 
 const hre   = require("hardhat");
@@ -25,7 +28,7 @@ const TX_COUNT     = 100;
 const TOKEN_ID     = 1;
 const ORDER_TTL_S  = 3600;
 
-// ─── Order construction (multi-signer) ───────────────────────────────────────
+// ─── Order construction (three-signer) ───────────────────────────────────────
 
 async function makeOrder(signers, tokenId, caseNumber, expiryOffset, nonce) {
   const expiry = Math.floor(Date.now() / 1000) + expiryOffset;
@@ -81,7 +84,7 @@ function printTable(label, s, count, elapsed) {
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
-async function setupContracts(admin, judge) {
+async function setupContracts(admin, judge, clerk) {
   console.log("  Deploying ParcelToken...");
   const TokenFactory = await hre.ethers.getContractFactory("ParcelToken");
   const token = await TokenFactory.deploy();
@@ -112,6 +115,11 @@ async function setupContracts(admin, judge) {
     judge.address, "District Court Vellore", 0, oneYear, 3, vellore, 1
   )).wait();
 
+  // Clerk: ROLE_CLERK, District Court Vellore (Sprint 0b — fresh random wallet)
+  await (await contract.registerJudge(
+    clerk.address, "District Court Vellore Clerk", 0, oneYear, 3, vellore, 2
+  )).wait();
+
   // Admin: ROLE_REGISTRAR, national co-signer
   await (await contract.registerJudge(
     admin.address, "Land Registry Authority", 0, oneYear, 4, tamilNadu, 3
@@ -131,15 +139,23 @@ async function main() {
   console.log(`\n${"═".repeat(50)}`);
   console.log(`  Benchmark — ${networkName}  (chain ID ${chainId})`);
   console.log(`${"═".repeat(50)}`);
-  console.log(`  Transactions  : ${TX_COUNT} (multi-signer: judge + registrar)`);
+  console.log(`  Transactions  : ${TX_COUNT} (three-signer: judge + clerk + registrar)`);
   console.log(`  Token         : #${TOKEN_ID}`);
 
   const [admin, judge] = await hre.ethers.getSigners();
+  // Create a fresh clerk wallet and fund it from admin (no genesis.json change needed)
+  const clerk = hre.ethers.Wallet.createRandom().connect(hre.ethers.provider);
+  await (await admin.sendTransaction({
+    to: clerk.address,
+    value: hre.ethers.parseEther("1"),
+  })).wait();
+
   console.log(`  Admin/Registrar: ${admin.address}`);
   console.log(`  Judge          : ${judge.address}`);
+  console.log(`  Clerk          : ${clerk.address}`);
 
   console.log("\n[ Setup ]");
-  const contract = await setupContracts(admin, judge);
+  const contract = await setupContracts(admin, judge, clerk);
 
   console.log(`\n[ Sending ${TX_COUNT} freeze orders ]`);
   const latencies = [];
@@ -147,7 +163,7 @@ async function main() {
 
   for (let i = 0; i < TX_COUNT; i++) {
     const caseNumber = `BENCH-${networkName.toUpperCase()}-${String(i).padStart(3, "0")}`;
-    const order      = await makeOrder([judge, admin], TOKEN_ID, caseNumber, ORDER_TTL_S, i);
+    const order      = await makeOrder([judge, clerk, admin], TOKEN_ID, caseNumber, ORDER_TTL_S, i);
 
     const t0 = Date.now();
     const tx = await contract.connect(judge).submitFreezeOrder(
@@ -178,9 +194,9 @@ async function main() {
     catch (_) { existing = {}; }
   }
 
-  // Save Besu multi-signer results under a distinct key so legacy single-signer
-  // results can coexist for comparison (Sprint 2 requirement).
-  const saveKey = networkName === "besu" ? "besu_multi_signer" : networkName;
+  // Save Besu three-signer results under a distinct key so legacy keys
+  // (besu_multi_signer, besu_single_signer_legacy) are preserved.
+  const saveKey = networkName === "besu" ? "besu_three_signer" : networkName;
 
   existing[saveKey] = {
     network:      networkName,
