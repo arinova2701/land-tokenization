@@ -9,7 +9,16 @@ import "./ParcelToken.sol";
  * @title  CourtKeyRegistry
  * @notice NyayaChain — Judicially Authenticated Property Freeze Protocol
  *
- * Changes from v1:
+ * Sprint 0b changes:
+ *   - Three-signer quorum: exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR required.
+ *   - CHECK_QUORUM_COSIG (bit 8) replaced by CHECK_QUORUM_CLERK (bit 8).
+ *   - CHECK_QUORUM_REGISTRAR (bit 12) added.
+ *   - quorumThreshold default raised to 3.
+ *   - HistoryEntry records all signer addresses and roles.
+ *   - OrderAccepted / OrderVacated events include signers and roles arrays.
+ *   - getFreezeHistorySigners() exposes per-entry signer data.
+ *
+ * Earlier changes:
  *   Step 1 — Multi-signer quorum: JUDGE + CLERK/REGISTRAR co-signature required.
  *   Step 2 — Pecuniary jurisdiction: declaredValue per parcel vs maxValue per level.
  *   Step 3 — ERC-3643-compatible token: freeze path delegates to ParcelToken agent.
@@ -25,19 +34,20 @@ contract CourtKeyRegistry {
     uint8 public constant ROLE_CLERK     = 2;
     uint8 public constant ROLE_REGISTRAR = 3;
 
-    // ── Check bitmask constants (Step 4) ──────────────────────────────────────
-    uint256 public constant CHECK_EXPIRY       = 1 << 0;   // order not expired
-    uint256 public constant CHECK_REPLAY       = 1 << 1;   // not a replay
-    uint256 public constant CHECK_RECOVER      = 1 << 2;   // all signatures recovered
-    uint256 public constant CHECK_NO_DUPE      = 1 << 3;   // no duplicate signers
-    uint256 public constant CHECK_REGISTRY     = 1 << 4;   // all signers active in registry
-    uint256 public constant CHECK_VALIDITY     = 1 << 5;   // all keys within validity window
-    uint256 public constant CHECK_JURISDICTION = 1 << 6;   // territorial jurisdiction
-    uint256 public constant CHECK_QUORUM_JUDGE = 1 << 7;   // at least 1 JUDGE present
-    uint256 public constant CHECK_QUORUM_COSIG = 1 << 8;   // at least 1 CLERK/REGISTRAR present
-    uint256 public constant CHECK_NONCE        = 1 << 9;   // nonce valid
-    uint256 public constant CHECK_PECUNIARY    = 1 << 10;  // value within court limit
-    uint256 public constant CHECK_FROZEN_STATE = 1 << 11;  // token currently frozen (unfreeze)
+    // ── Check bitmask constants ────────────────────────────────────────────────
+    uint256 public constant CHECK_EXPIRY          = 1 << 0;   // order not expired
+    uint256 public constant CHECK_REPLAY          = 1 << 1;   // not a replay
+    uint256 public constant CHECK_RECOVER         = 1 << 2;   // all signatures recovered
+    uint256 public constant CHECK_NO_DUPE         = 1 << 3;   // no duplicate signers
+    uint256 public constant CHECK_REGISTRY        = 1 << 4;   // all signers active in registry
+    uint256 public constant CHECK_VALIDITY        = 1 << 5;   // all keys within validity window
+    uint256 public constant CHECK_JURISDICTION    = 1 << 6;   // territorial jurisdiction
+    uint256 public constant CHECK_QUORUM_JUDGE    = 1 << 7;   // at least 1 JUDGE present
+    uint256 public constant CHECK_QUORUM_CLERK    = 1 << 8;   // at least 1 CLERK present (Sprint 0b)
+    uint256 public constant CHECK_NONCE           = 1 << 9;   // nonce valid
+    uint256 public constant CHECK_PECUNIARY       = 1 << 10;  // value within court limit
+    uint256 public constant CHECK_FROZEN_STATE    = 1 << 11;  // token currently frozen (unfreeze only)
+    uint256 public constant CHECK_QUORUM_REGISTRAR = 1 << 12; // at least 1 REGISTRAR present (Sprint 0b)
 
     // ── Data structures ───────────────────────────────────────────────────────
 
@@ -52,12 +62,14 @@ contract CourtKeyRegistry {
     }
 
     struct HistoryEntry {
-        uint256 timestamp;
-        string  caseNumber;
-        address signer;          // primary JUDGE address
-        bool    isFreezeAction;
-        uint256 nonce;
-        uint256 checksBitmask;   // Step 4: all passing checks at acceptance time
+        uint256   timestamp;
+        string    caseNumber;
+        address   signer;          // primary JUDGE address
+        bool      isFreezeAction;
+        uint256   nonce;
+        uint256   checksBitmask;   // Step 4: all passing checks at acceptance time
+        address[] signers;         // Sprint 0b: all signer addresses
+        uint8[]   roles;           // Sprint 0b: corresponding roles
     }
 
     // ── Storage ───────────────────────────────────────────────────────────────
@@ -76,13 +88,29 @@ contract CourtKeyRegistry {
     mapping(uint256  => string)         public frozenBy;            // tokenId => case number
     mapping(uint256  => HistoryEntry[]) public freezeHistory;
 
-    uint256 public quorumThreshold; // minimum total signatures required (Step 1)
+    uint256 public quorumThreshold; // minimum total signatures required
 
     // ── Events ────────────────────────────────────────────────────────────────
 
     event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory);
-    event OrderAccepted(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask);
-    event OrderVacated(uint256 indexed tokenId, address indexed signer, string caseNumber, uint256 nonce, uint256 checksBitmask);
+    event OrderAccepted(
+        uint256 indexed tokenId,
+        address indexed signer,   // primary JUDGE
+        string  caseNumber,
+        uint256 nonce,
+        uint256 checksBitmask,
+        address[] signers,        // Sprint 0b: all signers
+        uint8[]   roles           // Sprint 0b: corresponding roles
+    );
+    event OrderVacated(
+        uint256 indexed tokenId,
+        address indexed signer,   // primary JUDGE
+        string  caseNumber,
+        uint256 nonce,
+        uint256 checksBitmask,
+        address[] signers,        // Sprint 0b: all signers
+        uint8[]   roles           // Sprint 0b: corresponding roles
+    );
     event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue);
     event ParcelDeclaredValueSet(uint256 indexed tokenId, uint256 value);
     event CourtLevelMaxValueSet(uint8 courtLevel, uint256 maxValue);
@@ -100,7 +128,7 @@ contract CourtKeyRegistry {
     constructor(address parcelTokenAddress) {
         admin       = msg.sender;
         parcelToken = ParcelToken(parcelTokenAddress);
-        quorumThreshold = 2; // 1 JUDGE + at least 1 CLERK/REGISTRAR
+        quorumThreshold = 3; // Sprint 0b: 1 JUDGE + 1 CLERK + 1 REGISTRAR
 
         // Seed court-level pecuniary limits (Indian Rupees) — Step 2
         courtLevelMaxValue[1] = 300_000;          // Munsif:          ₹3 lakh
@@ -140,7 +168,7 @@ contract CourtKeyRegistry {
     }
 
     function setQuorumThreshold(uint256 threshold) external onlyAdmin {
-        require(threshold >= 2, "Quorum threshold must be at least 2");
+        require(threshold >= 3, "Quorum threshold must be at least 3");
         quorumThreshold = threshold;
         emit QuorumThresholdSet(threshold);
     }
@@ -192,38 +220,49 @@ contract CourtKeyRegistry {
         );
     }
 
-    // ── Internal: multi-signer quorum validation (Step 1) ─────────────────────
+    // ── Internal: multi-signer quorum validation ──────────────────────────────
 
     /**
      * Validates all signatures for quorum rules.  Reverts with the first
      * failing check's error message.
      *
-     * Rules:
-     *   - Total signatures >= quorumThreshold
+     * Sprint 0b rules:
+     *   - Total signatures >= quorumThreshold (3)
      *   - No duplicate signers
      *   - Every signer: active in registry, within validity window
      *   - JUDGE and CLERK signers: must satisfy territorial jurisdiction
      *   - REGISTRAR signers: exempt from territorial jurisdiction (national authority)
      *   - At least 1 signer with ROLE_JUDGE
-     *   - At least 1 signer with ROLE_CLERK or ROLE_REGISTRAR
+     *   - At least 1 signer with ROLE_CLERK
+     *   - At least 1 signer with ROLE_REGISTRAR
      *
-     * Returns the primary JUDGE address (first JUDGE encountered) and the
-     * accumulated bitmask with all per-signer checks set.
+     * Returns the primary JUDGE address (first JUDGE encountered), the
+     * accumulated bitmask with all per-signer checks set, and parallel
+     * arrays of recovered signer addresses and their roles.
      */
     function _validateSignatures(
         bytes32 orderHash,
         uint256 tokenId,
         bytes[] calldata signatures,
         uint256 bitmask
-    ) internal view returns (address judgeAddress, uint256 newBitmask) {
+    ) internal view returns (
+        address          judgeAddress,
+        uint256          newBitmask,
+        address[] memory recoveredSigners,
+        uint8[]   memory recoveredRoles
+    ) {
         uint256 count = signatures.length;
         require(count >= quorumThreshold, "Signatures below quorum threshold");
 
         address[] memory seen = new address[](count);
-        uint256 seenCount  = 0;
-        uint256 judgeCount = 0;
-        uint256 cosigCount = 0;
-        judgeAddress       = address(0);
+        recoveredSigners = new address[](count);
+        recoveredRoles   = new uint8[](count);
+
+        uint256 seenCount      = 0;
+        uint256 judgeCount     = 0;
+        uint256 clerkCount     = 0;
+        uint256 registrarCount = 0;
+        judgeAddress           = address(0);
 
         bytes32 ethHash = orderHash.toEthSignedMessageHash();
 
@@ -252,11 +291,16 @@ contract CourtKeyRegistry {
                 _checkJurisdiction(signer, tokenId);
             }
 
+            recoveredSigners[i] = signer;
+            recoveredRoles[i]   = k.role;
+
             if (k.role == ROLE_JUDGE) {
                 judgeCount++;
-                if (judgeAddress == address(0)) judgeAddress = signer; // first JUDGE = primary
-            } else if (k.role == ROLE_CLERK || k.role == ROLE_REGISTRAR) {
-                cosigCount++;
+                if (judgeAddress == address(0)) judgeAddress = signer;
+            } else if (k.role == ROLE_CLERK) {
+                clerkCount++;
+            } else if (k.role == ROLE_REGISTRAR) {
+                registrarCount++;
             }
         }
 
@@ -270,8 +314,11 @@ contract CourtKeyRegistry {
         require(judgeCount >= 1, "At least one JUDGE signature required");
         bitmask |= CHECK_QUORUM_JUDGE;
 
-        require(cosigCount >= 1, "At least one CLERK or REGISTRAR co-signature required");
-        bitmask |= CHECK_QUORUM_COSIG;
+        require(clerkCount >= 1, "At least one CLERK signature required");
+        bitmask |= CHECK_QUORUM_CLERK;
+
+        require(registrarCount >= 1, "At least one REGISTRAR signature required");
+        bitmask |= CHECK_QUORUM_REGISTRAR;
 
         newBitmask = bitmask;
     }
@@ -312,15 +359,18 @@ contract CourtKeyRegistry {
         require(!usedOrders[orderHash], "Order already submitted");
         bitmask |= CHECK_REPLAY;
 
-        // Checks 3–9: multi-signer quorum (Step 1)
+        // Checks 3–12: multi-signer quorum
         address judgeAddress;
-        (judgeAddress, bitmask) = _validateSignatures(orderHash, tokenId, signatures, bitmask);
+        address[] memory signerAddrs;
+        uint8[]   memory signerRoles;
+        (judgeAddress, bitmask, signerAddrs, signerRoles) =
+            _validateSignatures(orderHash, tokenId, signatures, bitmask);
 
-        // Check 10: per-judge nonce sequencing (primary replay/ordering protection)
+        // Check 10 (bit 9): per-judge nonce sequencing (primary replay/ordering protection)
         require(nonce == judgeNonce[judgeAddress], "Invalid nonce");
         bitmask |= CHECK_NONCE;
 
-        // Check 11: pecuniary jurisdiction (Step 2)
+        // Check 11 (bit 10): pecuniary jurisdiction (Step 2)
         require(
             parcelDeclaredValue[tokenId] <= courtLevelMaxValue[registry[judgeAddress].courtLevel],
             "Parcel value exceeds court pecuniary limit"
@@ -335,17 +385,21 @@ contract CourtKeyRegistry {
         // Step 3: delegate freeze to ERC-3643-compatible token
         parcelToken.setAddressFrozen(_propertyAddress(tokenId), true);
 
-        // Step 4: store bitmask in history
-        freezeHistory[tokenId].push(HistoryEntry({
-            timestamp:     block.timestamp,
-            caseNumber:    caseNumber,
-            signer:        judgeAddress,
-            isFreezeAction: true,
-            nonce:         nonce,
-            checksBitmask: bitmask
-        }));
+        // Step 4 + Sprint 0b: store bitmask and signer data in history
+        freezeHistory[tokenId].push();
+        HistoryEntry storage entry = freezeHistory[tokenId][freezeHistory[tokenId].length - 1];
+        entry.timestamp      = block.timestamp;
+        entry.caseNumber     = caseNumber;
+        entry.signer         = judgeAddress;
+        entry.isFreezeAction = true;
+        entry.nonce          = nonce;
+        entry.checksBitmask  = bitmask;
+        for (uint256 i = 0; i < signerAddrs.length; i++) {
+            entry.signers.push(signerAddrs[i]);
+            entry.roles.push(signerRoles[i]);
+        }
 
-        emit OrderAccepted(tokenId, judgeAddress, caseNumber, nonce, bitmask);
+        emit OrderAccepted(tokenId, judgeAddress, caseNumber, nonce, bitmask, signerAddrs, signerRoles);
     }
 
     // ── Unfreeze (vacate injunction) ──────────────────────────────────────────
@@ -368,22 +422,25 @@ contract CourtKeyRegistry {
         require(!usedOrders[orderHash], "Order already submitted");
         bitmask |= CHECK_REPLAY;
 
-        // Checks 3–9: multi-signer quorum (Step 1)
+        // Checks 3–12: multi-signer quorum
         address judgeAddress;
-        (judgeAddress, bitmask) = _validateSignatures(orderHash, tokenId, signatures, bitmask);
+        address[] memory signerAddrs;
+        uint8[]   memory signerRoles;
+        (judgeAddress, bitmask, signerAddrs, signerRoles) =
+            _validateSignatures(orderHash, tokenId, signatures, bitmask);
 
-        // Check 10: per-judge nonce sequencing (primary replay/ordering protection)
+        // Check 10 (bit 9): per-judge nonce sequencing
         require(nonce == judgeNonce[judgeAddress], "Invalid nonce");
         bitmask |= CHECK_NONCE;
 
-        // Check 11: pecuniary jurisdiction (Step 2)
+        // Check 11 (bit 10): pecuniary jurisdiction (Step 2)
         require(
             parcelDeclaredValue[tokenId] <= courtLevelMaxValue[registry[judgeAddress].courtLevel],
             "Parcel value exceeds court pecuniary limit"
         );
         bitmask |= CHECK_PECUNIARY;
 
-        // Check 12: frozen state (unfreeze only — token must currently be frozen)
+        // Check 12 (bit 11): frozen state (unfreeze only — token must currently be frozen)
         require(frozen(tokenId), "Token is not frozen");
         bitmask |= CHECK_FROZEN_STATE;
 
@@ -393,16 +450,21 @@ contract CourtKeyRegistry {
 
         parcelToken.setAddressFrozen(_propertyAddress(tokenId), false);
 
-        freezeHistory[tokenId].push(HistoryEntry({
-            timestamp:     block.timestamp,
-            caseNumber:    caseNumber,
-            signer:        judgeAddress,
-            isFreezeAction: false,
-            nonce:         nonce,
-            checksBitmask: bitmask
-        }));
+        // Step 4 + Sprint 0b: store bitmask and signer data in history
+        freezeHistory[tokenId].push();
+        HistoryEntry storage entry = freezeHistory[tokenId][freezeHistory[tokenId].length - 1];
+        entry.timestamp      = block.timestamp;
+        entry.caseNumber     = caseNumber;
+        entry.signer         = judgeAddress;
+        entry.isFreezeAction = false;
+        entry.nonce          = nonce;
+        entry.checksBitmask  = bitmask;
+        for (uint256 i = 0; i < signerAddrs.length; i++) {
+            entry.signers.push(signerAddrs[i]);
+            entry.roles.push(signerRoles[i]);
+        }
 
-        emit OrderVacated(tokenId, judgeAddress, caseNumber, nonce, bitmask);
+        emit OrderVacated(tokenId, judgeAddress, caseNumber, nonce, bitmask, signerAddrs, signerRoles);
     }
 
     // ── On-chain verification record view (Step 4) ────────────────────────────
@@ -414,9 +476,6 @@ contract CourtKeyRegistry {
      *
      *          The Court portal calls this BEFORE submitting to preview results,
      *          and reads the stored bitmask from history AFTER acceptance.
-     *
-     *          Revert-reason → failing-step mapping in the frontend is labelled
-     *          explicitly as a client-side mapping (not derived from this function).
      */
     function getOrderChecks(
         uint256          tokenId,
@@ -441,15 +500,16 @@ contract CourtKeyRegistry {
         bytes32 ethHash = orderHash.toEthSignedMessageHash();
 
         address[] memory seen = new address[](signatures.length);
-        uint256 seenCount    = 0;
-        uint256 judgeCount   = 0;
-        uint256 cosigCount   = 0;
-        bool allRecovered    = true;
-        bool noDuplicates    = true;
-        bool allRegistered   = true;
-        bool allValid        = true;
-        bool allJurisdiction = true;
-        address judgeAddress = address(0);
+        uint256 seenCount      = 0;
+        uint256 judgeCount     = 0;
+        uint256 clerkCount     = 0;
+        uint256 registrarCount = 0;
+        bool allRecovered      = true;
+        bool noDuplicates      = true;
+        bool allRegistered     = true;
+        bool allValid          = true;
+        bool allJurisdiction   = true;
+        address judgeAddress   = address(0);
 
         for (uint256 i = 0; i < signatures.length; i++) {
             // Use tryRecover so view function never reverts on bad sig
@@ -484,8 +544,10 @@ contract CourtKeyRegistry {
             if (k.role == ROLE_JUDGE) {
                 judgeCount++;
                 if (judgeAddress == address(0)) judgeAddress = signer;
-            } else if (k.role == ROLE_CLERK || k.role == ROLE_REGISTRAR) {
-                cosigCount++;
+            } else if (k.role == ROLE_CLERK) {
+                clerkCount++;
+            } else if (k.role == ROLE_REGISTRAR) {
+                registrarCount++;
             }
         }
 
@@ -504,11 +566,14 @@ contract CourtKeyRegistry {
         if (!allJurisdiction) return bitmask;
         bitmask |= CHECK_JURISDICTION;
 
-        if (judgeCount == 0)  return bitmask;
+        if (judgeCount == 0)       return bitmask;
         bitmask |= CHECK_QUORUM_JUDGE;
 
-        if (cosigCount == 0)  return bitmask;
-        bitmask |= CHECK_QUORUM_COSIG;
+        if (clerkCount == 0)       return bitmask;
+        bitmask |= CHECK_QUORUM_CLERK;
+
+        if (registrarCount == 0)   return bitmask;
+        bitmask |= CHECK_QUORUM_REGISTRAR;
 
         if (judgeAddress == address(0) || nonce != judgeNonce[judgeAddress]) return bitmask;
         bitmask |= CHECK_NONCE;
@@ -533,5 +598,17 @@ contract CourtKeyRegistry {
     ) {
         HistoryEntry storage e = freezeHistory[tokenId][index];
         return (e.timestamp, e.caseNumber, e.signer, e.isFreezeAction, e.nonce, e.checksBitmask);
+    }
+
+    /**
+     * @notice Returns the signer addresses and roles for a specific history entry.
+     *         Added in Sprint 0b to expose the full signer set per order.
+     */
+    function getFreezeHistorySigners(uint256 tokenId, uint256 index) external view returns (
+        address[] memory signers,
+        uint8[]   memory roles
+    ) {
+        HistoryEntry storage e = freezeHistory[tokenId][index];
+        return (e.signers, e.roles);
     }
 }
