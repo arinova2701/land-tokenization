@@ -149,6 +149,16 @@ async function main() {
     result("Clerk key", false, e.message);
   }
 
+  // Check 8b: Registrar key registered with ROLE_REGISTRAR
+  try {
+    const info = await contract.registry(wallets.registrar.address);
+    result("Registrar key registered (ROLE_REGISTRAR)",
+      info.active && Number(info.role) === 3,
+      wallets.registrar.address + " — role=" + info.role + " active=" + info.active);
+  } catch (e) {
+    result("Registrar key", false, e.message);
+  }
+
   // Check 9: Three demo parcels exist (Tokens 4, 5, 6)
   const parcelNames = { 4: "Parcel A (success)", 5: "Parcel B (pecuniary fail)", 6: "Parcel C (territorial fail)" };
   for (const [tokenId, name] of Object.entries(parcelNames)) {
