@@ -223,10 +223,21 @@ describe("Negative Corpus (27 cases)", function () {
       judgeVellore.address, "District Court Vellore", future, future + 1, 3, vellore, 1
     )).wait();
     const o = await makeOrder([judgeVellore, admin], 1, "CASE-4", 3600, "freeze", 0);
-    await expectRevert(
-      c.submitFreezeOrder(1, "CASE-4", o.hash, o.expiry, 0, o.sigs),
-      "Judicial key expired or not yet valid"
-    );
+    // Use staticCall (eth_call) instead of a mined transaction. On Besu, the gas
+    // estimator can hang when simulating a revert gated on a very-far-future
+    // validFrom timestamp, and the receipt path does not propagate the reason string.
+    // staticCall avoids both issues while still verifying the exact revert reason.
+    let caught4 = false;
+    try {
+      await c.submitFreezeOrder.staticCall(1, "CASE-4", o.hash, o.expiry, 0, o.sigs);
+    } catch (err) {
+      const msg = err.reason || err.shortMessage || err.message || String(err);
+      if (!msg.includes("Judicial key expired or not yet valid")) {
+        throw new Error('Expected "Judicial key expired or not yet valid" but got: ' + msg);
+      }
+      caught4 = true;
+    }
+    if (!caught4) throw new Error("Expected revert but staticCall succeeded");
   });
 
   // ── Case 5: Expired order ─────────────────────────────────────────────────
