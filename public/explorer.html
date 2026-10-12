@@ -1,0 +1,109 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chain Explorer · NyayaChain</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<style>
+body{margin:0;background:#f4f7fb;color:#14223a;font:15px/1.5 system-ui,sans-serif}
+header{background:#0b1736;color:white;padding:20px max(22px,calc((100vw - 1200px)/2))}
+header a{color:#bfdbfe}main{max-width:1200px;margin:auto;padding:24px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.card{background:#fff;border:1px solid #dbe3ef;border-radius:10px;padding:18px;margin-bottom:20px;min-width:0}
+h1,h2{margin:.3rem 0 1rem}p{color:#64748b}.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:500px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #e2e8f0;padding:8px}
+th{background:#f8fafc}code{overflow-wrap:anywhere}.muted{color:#64748b}
+.event{padding:10px 0;border-bottom:1px solid #e2e8f0}.event:last-child{border:0}
+.pill{display:inline-block;border-radius:12px;background:#e0f2fe;color:#075985;padding:2px 9px;font-size:12px;font-weight:700}
+button{background:#2563eb;color:#fff;border:0;border-radius:7px;padding:9px 15px;font:inherit;cursor:pointer}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+</style></head><body>
+<header><a href="index.html">← Citizen portal</a><h1>Besu Chain Explorer</h1><span id="network">Connecting…</span></header>
+<main><p>Read-only view of local blocks, contract events and current state. No wallet is needed. <button id="refresh">Refresh</button></p>
+<div class="grid"><section class="card"><h2>Latest blocks</h2><div class="scroll"><table><thead><tr><th>Block</th><th>Time</th><th>Transactions</th></tr></thead><tbody id="blocks"></tbody></table></div></section>
+<section class="card"><h2>Recent transactions</h2><div class="scroll"><table><thead><tr><th>Hash</th><th>Block</th><th>Decoded method</th></tr></thead><tbody id="transactions"></tbody></table></div></section></div>
+<div class="grid"><section class="card"><h2>Event feed</h2><div id="events">Loading…</div></section>
+<section class="card"><h2>Contract state</h2><p id="addresses"></p><h3>Registered signers and nonces</h3><div class="scroll"><table><thead><tr><th>Signer</th><th>Role / court</th><th>Active</th><th>Judge nonce</th></tr></thead><tbody id="signers"></tbody></table></div>
+<h3>Court value limits</h3><div id="limits"></div><h3>Parcels</h3><div class="scroll"><table><thead><tr><th>Token</th><th>Territory</th><th>Declared value</th><th>Frozen</th></tr></thead><tbody id="parcels"></tbody></table></div></section></div>
+</main>
+<script>
+(async function(){
+ const ABI=[
+  "function registry(address) view returns (string courtName,uint256 validFrom,uint256 validUntil,bool active,uint8 courtLevel,bytes32 territoryCode,uint8 role)",
+  "function judgeNonce(address) view returns (uint256)",
+  "function courtLevelMaxValue(uint8) view returns (uint256)",
+  "function propertyTerritory(uint256) view returns (bytes32)",
+  "function territoryName(bytes32) view returns (string)",
+  "function parcelDeclaredValue(uint256) view returns (uint256)",
+  "function frozen(uint256) view returns (bool)",
+  "function submitFreezeOrder(uint256,string,bytes32,uint256,uint256,bytes[])",
+  "function submitUnfreezeOrder(uint256,string,bytes32,uint256,uint256,bytes[])",
+  "function registerJudge(address,string,uint256,uint256,uint8,bytes32,uint8)",
+  "function registerProperty(uint256,bytes32,uint256)",
+  "event JudgeRegistered(address indexed signer,string courtName,uint8 courtLevel,uint8 role,string territory)",
+  "event PropertyRegistered(uint256 indexed tokenId,string territory,uint256 declaredValue)",
+  "event OrderAccepted(uint256 indexed tokenId,address indexed signer,string caseNumber,uint256 nonce,uint256 checksBitmask,address[] signers,uint8[] roles)",
+  "event OrderVacated(uint256 indexed tokenId,address indexed signer,string caseNumber,uint256 nonce,uint256 checksBitmask,address[] signers,uint8[] roles)"
+ ];
+ const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+ const short=a=>a.slice(0,10)+"…"+a.slice(-6);
+ const money=n=>"₹"+BigInt(n).toLocaleString("en-IN");
+ const role={1:"Judge",2:"Clerk",3:"Registrar"};
+ const level={1:"Munsif",2:"Sub Court",3:"District Court",4:"High Court"};
+ const config=await(await fetch("config.json")).json();
+ const checks=await(await fetch("checks.json")).json();
+ const provider=new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+ const contract=new ethers.Contract(config.contractAddress,ABI,provider);
+ const iface=new ethers.Interface(ABI);
+ const ids={blocks:"blocks",transactions:"transactions",events:"events",signers:"signers",limits:"limits",parcels:"parcels"};
+ function set(id,text){document.getElementById(id).textContent=text}
+ async function refresh(){
+  try{
+   const network=await provider.getNetwork(),latest=await provider.getBlockNumber();
+   set("network",`Chain ${network.chainId} · block #${latest}`);
+   document.getElementById("addresses").innerHTML=`CourtKeyRegistry <code>${safe(config.contractAddress)}</code><br>ParcelToken <code>${safe(config.parcelTokenAddress)}</code>`;
+   const blocks=await Promise.all(Array.from({length:Math.min(10,latest+1)},(_,i)=>provider.getBlock(latest-i,true)));
+   document.getElementById("blocks").innerHTML=blocks.map(b=>`<tr><td>#${b.number}</td><td>${safe(new Date(b.timestamp*1000).toLocaleString("en-IN"))}</td><td>${b.transactions.length}</td></tr>`).join("");
+   const recent=await provider.getLogs({address:config.contractAddress,fromBlock:Math.max(0,latest-300),toBlock:latest});
+   const eventTransactions=await Promise.all([...new Set(recent.map(log=>log.transactionHash))].slice(-25).reverse().map(async hash=>{
+    const tx=await provider.getTransaction(hash);
+    return {tx,block:tx.blockNumber};
+   }));
+   const txs=[...blocks.flatMap(b=>b.prefetchedTransactions.map(tx=>({tx,block:b.number}))),...eventTransactions];
+   const distinct=[...new Map(txs.map(item=>[item.tx.hash,item])).values()].sort((a,b)=>b.block-a.block);
+   document.getElementById("transactions").innerHTML=distinct.slice(0,25).map(({tx,block})=>{
+    let method=tx.to?.toLowerCase()===config.contractAddress.toLowerCase()?"Registry call":"Other transaction";
+    try{const decoded=iface.parseTransaction({data:tx.data});if(decoded)method=decoded.name}catch{}
+    return `<tr><td><code title="${safe(tx.hash)}">${safe(short(tx.hash))}</code></td><td>#${block}</td><td>${safe(method)}</td></tr>`;
+   }).join("")||'<tr><td colspan="3">No transactions in recent blocks</td></tr>';
+   const events=recent.map(log=>{try{return {log,event:iface.parseLog(log)}}catch{return null}}).filter(x=>x?.event).reverse().slice(0,25);
+   document.getElementById("events").innerHTML=events.map(({log,event})=>{
+    const a=event.args;let message;
+    if(event.name==="OrderAccepted"||event.name==="OrderVacated"){
+      const action=event.name==="OrderAccepted"?"freeze":"unfreeze";
+      const passed=checks.checks.filter(ch=>ch.actions.includes(action) && (a.checksBitmask & (1n<<BigInt(ch.bit)))).map(ch=>ch.name).join(", ");
+      message=`${action==="freeze"?"Freeze":"Unfreeze"} order ${a.caseNumber} for Token ${a.tokenId}; ${a.signers.length} signers; checks 0x${a.checksBitmask.toString(16)} (${passed})`;
+    }
+    else if(event.name==="JudgeRegistered")message=`${role[Number(a.role)]||"Signer"} registered: ${a.courtName} (${short(a.signer)})`;
+    else if(event.name==="PropertyRegistered")message=`Token ${a.tokenId} registered in ${a.territory}, value ${money(a.declaredValue)}`;
+    else return "";
+    return `<div class="event"><span class="pill">#${log.blockNumber}</span> ${safe(message)}</div>`;
+   }).join("")||"No recent contract events";
+   const all=await provider.getLogs({address:config.contractAddress,fromBlock:0,toBlock:latest,topics:[iface.getEvent("JudgeRegistered").topicHash]});
+   const addresses=[...new Set(all.map(log=>iface.parseLog(log).args.signer.toLowerCase()))];
+   document.getElementById("signers").innerHTML=(await Promise.all(addresses.map(async a=>{
+    const [key,nonce]=await Promise.all([contract.registry(a),contract.judgeNonce(a)]);
+    return `<tr><td><code title="${safe(a)}">${safe(short(a))}</code></td><td>${safe(role[Number(key.role)]||"Unknown")} · ${safe(key.courtName)} · ${safe(level[Number(key.courtLevel)]||"Unknown")}</td><td>${key.active?"Yes":"No"}</td><td>${Number(key.role)===1?nonce:"—"}</td></tr>`;
+   }))).join("")||'<tr><td colspan="4">No signer events</td></tr>';
+   document.getElementById("limits").innerHTML=(await Promise.all([1,2,3,4].map(async n=>`${level[n]}: ${money(await contract.courtLevelMaxValue(n))}`))).map(s=>safe(s)).join("<br>");
+   const propertyLogs=await provider.getLogs({address:config.contractAddress,fromBlock:0,toBlock:latest,topics:[iface.getEvent("PropertyRegistered").topicHash]});
+   const tokenIds=[...new Set(propertyLogs.map(log=>iface.parseLog(log).args.tokenId.toString()))].sort((a,b)=>Number(a)-Number(b));
+   document.getElementById("parcels").innerHTML=(await Promise.all(tokenIds.map(async id=>{
+    const [code,value,frozen]=await Promise.all([contract.propertyTerritory(id),contract.parcelDeclaredValue(id),contract.frozen(id)]);
+    const territory=await contract.territoryName(code);
+    return `<tr><td><a href="index.html?token=${encodeURIComponent(id)}">#${safe(id)}</a></td><td>${safe(territory||code)}</td><td>${safe(money(value))}</td><td>${frozen?"Frozen":"Not frozen"}</td></tr>`;
+   }))).join("")||'<tr><td colspan="4">No parcels</td></tr>';
+  }catch(e){set("network","Explorer error: "+(e.shortMessage||e.message));console.error(e)}
+ }
+ document.getElementById("refresh").onclick=refresh;
+ refresh();
+})();
+</script></body></html>

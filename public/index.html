@@ -267,6 +267,9 @@ footer {
   font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 18px; color: #64748B;
 }
+.footer-links { margin-top: 12px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+.footer-links a { color: #bfdbfe; text-decoration: none; }
+.footer-links a:hover { text-decoration: underline; }
 
 @media (max-width: 768px) {
   nav { top: 8px; width: calc(100% - 24px); padding: 0 20px; border-radius: 10px; }
@@ -408,6 +411,7 @@ footer {
 <footer>
   <div class="footer-brand">NyayaChain</div>
   <div class="footer-sub">Judicially Authenticated Property Freeze Protocol</div>
+  <div class="footer-links"><a href="verify.html">Independent verifier</a><a href="explorer.html">Chain explorer</a><a href="demo.html">Demo console</a><a href="architecture.html">Architecture</a></div>
 </footer>
 
 <script>
