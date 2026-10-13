@@ -1,6 +1,6 @@
 # NyayaChain — Status
 
-**Last updated:** 2026-10-12
+**Last updated:** 2026-10-13
 **Branch:** main
 
 ## Implemented
@@ -48,10 +48,20 @@
 - `getFreezeHistorySigners(tokenId, index)` — new view function.
 - `setQuorumThreshold` minimum raised to 3.
 
+### Sprint 0c — Order binding security fix + getOrderChecks action parameter
+
+- **Security fix:** `submitFreezeOrder` and `submitUnfreezeOrder` no longer accept a client-supplied `orderHash`. The contract computes the digest internally using `computeOrderDigest()`.
+- **New digest recipe:** `keccak256(abi.encode(block.chainid, address(this), action, tokenId, keccak256(bytes(caseNumber)), orderExpiry, nonce))`. Binds the signature to the chain, contract address, action type, and all order fields.
+- **Action constants:** `FREEZE = 0`, `UNFREEZE = 1` (uint8, on-chain).
+- **`getOrderChecks` updated:** now takes `(uint8 action, uint256 tokenId, string caseNumber, uint256 orderExpiry, uint256 nonce, bytes[] signatures)`. FROZEN_STATE (bit 11) is now correctly evaluated for the unfreeze action — the old workaround in the frontend is removed.
+- **`public/order-digest.js`:** New shared helper (`NyayaDigest.compute`) for browser and Node.js. court.html, inspector.js, verify.html, scripts/scenarios.js all updated to use it.
+- **`public/config.json`** added to `.gitignore` (written by deploy-besu.js, not committed).
+
 ### Step 5 — Tests, benchmarks, docs
-- `test/negative-corpus.js`: 30 test cases (20 original + 6 new + 1 demo happy path + 3 Sprint 0b cases).
-- Sprint 0b new cases: 28 (missing CLERK), 29 (missing REGISTRAR), 30 (two JUDGEs, no CLERK).
-- All 30 pass on Hardhat.
+- `test/negative-corpus.js`: 37 test cases (30 Sprint 0b + 7 Sprint 0c order-binding).
+  - Cases 31–36: valid bundle reused with different tokenId, expiry, action, nonce, caseNumber, or contract — all revert with "Unregistered or revoked signer".
+  - Case 37: `NyayaDigest.compute` matches on-chain `computeOrderDigest` for 3 inputs.
+- All 37 pass on Hardhat.
 - Besu QBFT three-signer benchmark (100 tx) — run after Sprint 0b merge; results saved under `besu_three_signer` key.
 - Prior Besu results retained under `besu_multi_signer` and `besu_single_signer_legacy` keys in `data/benchmark-results.json`.
 - `docs/idf-b-alignment.md` added.
@@ -67,9 +77,15 @@
 - Full T-REX identity registry: out of scope; `ParcelToken` implements the freeze surface only.
 - No off-chain backend or indexer exists in this repo. All state is queried directly from the chain via ethers.js.
 
+### Security fix: order binding
+
+**Flaw found in team review (Sprint 0c):** The previous implementation accepted a client-supplied `orderHash` parameter. A malicious caller could construct signatures over one set of parameters and submit them with a different set (e.g., different `tokenId` or `action`), potentially bypassing checks that depend on the caller-supplied fields.
+
+**Fix:** The contract now computes `computeOrderDigest(action, tokenId, caseNumber, orderExpiry, nonce)` itself — binding the signature to `block.chainid`, `address(this)`, and all order fields. The old `orderHash` parameter is removed from `submitFreezeOrder` and `submitUnfreezeOrder`. Six new test cases (31–36) prove the attack surface is closed.
+
 ## Networks
 | Network         | Chain ID | Block time | Status        |
 |-----------------|----------|------------|---------------|
-| Hardhat (in-process) | 31337 | instant | 27/27 tests pass |
+| Hardhat (in-process) | 31337 | instant | 37/37 tests pass |
 | Hardhat localhost    | 31337 | instant | Deploy + benchmark verified |
-| Besu QBFT (docker)   | 1337  | ~2s     | Deployed; 27/27 tests pass; multi-signer benchmark run |
+| Besu QBFT (docker)   | 1337  | ~2s     | Deployed; 37/37 tests pass; benchmark pending Sprint 0c re-run |

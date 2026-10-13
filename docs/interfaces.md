@@ -69,12 +69,26 @@ function getFreezeHistorySigners(uint256 tokenId, uint256 index) view returns (
     uint8[]   memory roles
 )
 
+// Compute the canonical order digest (Sprint 0c — bound to chainId + contract address).
+// Digest = keccak256(abi.encode(chainId, address(this), action, tokenId,
+//                               keccak256(bytes(caseNumber)), orderExpiry, nonce))
+// JS equivalent: NyayaDigest.compute() in public/order-digest.js
+function computeOrderDigest(
+    uint8           action,        // FREEZE (0) or UNFREEZE (1)
+    uint256         tokenId,
+    string calldata caseNumber,
+    uint256         orderExpiry,
+    uint256         nonce
+) view returns (bytes32)
+
 // Pre-flight check: returns bitmask of passing checks without reverting.
-// Call this before submitFreezeOrder to show the checks panel.
+// Call this before submitFreezeOrder/submitUnfreezeOrder to show the checks panel.
+// Sprint 0c: action is now required; FROZEN_STATE (bit 11) is included for unfreeze.
 // Bit definitions are in public/checks.json.
 function getOrderChecks(
+    uint8            action,        // FREEZE (0) or UNFREEZE (1)
     uint256          tokenId,
-    bytes32          orderHash,
+    string calldata  caseNumber,
     uint256          orderExpiry,
     uint256          nonce,
     bytes[] calldata signatures
@@ -94,13 +108,13 @@ function quorumThreshold() view returns (uint256)
 
 ```solidity
 // Submit a freeze order. Requires quorumThreshold signatures:
-//   exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR (after Sprint 0b).
-// orderHash = keccak256(abi.encode(tokenId, caseNumber, orderExpiry, nonce))
-// Each signature = ethers personal_sign of orderHash (eth_sign prefix applied on-chain).
+//   exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR.
+// Sprint 0c: orderHash is no longer a parameter. The contract computes the
+//   digest from the other fields and verifies every signature against it.
+// Each signature = ethers personal_sign of computeOrderDigest(…) output.
 function submitFreezeOrder(
     uint256          tokenId,
     string calldata  caseNumber,
-    bytes32          orderHash,
     uint256          orderExpiry,
     uint256          nonce,
     bytes[] calldata signatures
@@ -111,7 +125,6 @@ function submitFreezeOrder(
 function submitUnfreezeOrder(
     uint256          tokenId,
     string calldata  caseNumber,
-    bytes32          orderHash,
     uint256          orderExpiry,
     uint256          nonce,
     bytes[] calldata signatures
@@ -155,20 +168,39 @@ event PropertyRegistered(
 )
 ```
 
-### 1.4 Order hash computation
+### 1.4 Order hash computation (Sprint 0c — security fix)
+
+**Old recipe (before Sprint 0c — INSECURE, removed):** `keccak256(abi.encode(tokenId, caseNumber, orderExpiry, nonce))`
+
+**New recipe:** The digest is now bound to the chain, the contract instance, and the action, preventing cross-chain, cross-contract, and cross-action replay attacks.
 
 ```js
-// In the browser (ethers v6)
-const orderHash = ethers.keccak256(
-  ethers.AbiCoder.defaultAbiCoder().encode(
-    ["uint256", "string", "uint256", "uint256"],
-    [tokenId, caseNumber, orderExpiry, nonce]
-  )
+// In the browser (ethers v6) — use the shared helper:
+import/require "public/order-digest.js"   // exposes window.NyayaDigest or module.exports
+
+const orderHash = NyayaDigest.compute(
+  "freeze",           // "freeze" or "unfreeze"
+  tokenId,            // uint256
+  caseNumber,         // string
+  orderExpiry,        // uint256 (Unix seconds)
+  nonce,              // uint256 (judgeNonce[judgeAddress])
+  chainId,            // uint256 — from provider.getNetwork().chainId
+  contractAddress     // address — from config.json
 );
+// Equivalent Solidity:
+//   keccak256(abi.encode(
+//     block.chainid, address(this), action,
+//     tokenId, keccak256(bytes(caseNumber)), orderExpiry, nonce
+//   ))
+
 // Signing: ethers personal_sign applies the eth_signed_message prefix,
 // which the contract recovers via MessageHashUtils.toEthSignedMessageHash.
 const sig = await signer.signMessage(ethers.getBytes(orderHash));
 ```
+
+**Action encoding:** `FREEZE = 0`, `UNFREEZE = 1` (uint8 constants on the contract).
+
+**Note:** The `orderHash` field is still present in the Order JSON schema (§3) for client-side use (coordination service keys, export/import validation). It is NOT passed to `submitFreezeOrder` or `submitUnfreezeOrder` any more — the contract recomputes it from the other fields.
 
 ---
 
