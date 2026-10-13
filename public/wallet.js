@@ -197,6 +197,46 @@
     return signer.signMessage(ethers.getBytes(orderHash));
   }
 
+  // ── Event logs ──────────────────────────────────────────────────────────────
+  // Besu rejects eth_getLogs over a large block range (-32005), so scanning from block 0 breaks on any
+  // long-running chain. Start at the block the contract was deployed in, and read in small windows.
+  const LOG_WINDOW = 1000;
+
+  // eth_getCode straight from the node: before the contract existed Besu answers null, which ethers.getCode rejects.
+  async function hasCode(provider, address, block) {
+    try {
+      const code = await provider.send("eth_getCode", [address, "0x" + block.toString(16)]);
+      return !!code && code !== "0x";
+    } catch (_) { return false; }
+  }
+
+  async function deployBlock(provider, address) {
+    const key = "nyaya:deployBlock:" + address.toLowerCase();
+    const cached = Number(storageGet(key));
+    let hi = await provider.getBlockNumber();
+    if (Number.isInteger(cached) && cached > 0 && cached <= hi) return cached;
+    if (!(await hasCode(provider, address, hi))) return hi;           // nothing deployed here (yet)
+    let lo = 0;
+    while (lo < hi) {                                                // first block that has code
+      const mid = Math.floor((lo + hi) / 2);
+      if (await hasCode(provider, address, mid)) hi = mid; else lo = mid + 1;
+    }
+    storageSet(key, String(lo));
+    return lo;
+  }
+
+  /** All logs matching `filter` from the contract's deploy block to now, in windows the node accepts. */
+  async function queryLogs(contract, filter) {
+    const provider = contract.runner.provider;
+    const latest = await provider.getBlockNumber();
+    const from = await deployBlock(provider, await contract.getAddress());
+    const out = [];
+    for (let start = from; start <= latest; start += LOG_WINDOW) {
+      out.push(...await contract.queryFilter(filter, start, Math.min(start + LOG_WINDOW - 1, latest)));
+    }
+    return out;
+  }
+
   // Keep the session in sync with MetaMask. A chain change re-detects the role
   // (no page reload) so pages can show a wrong-network message instead of breaking.
   if (hasMetaMask()) {
@@ -322,6 +362,7 @@
     getSession,
     homeFor,
     mountHeader,
+    queryLogs,
     shortAddress,
     ready,
   };

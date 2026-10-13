@@ -653,7 +653,7 @@ async function adoptSession(session) {
 // Parcels come from PropertyRegistered events; territory, value and frozen state are read live.
 async function loadTokens() {
   const sel = $("court-tokenid");
-  const logs = await contract.queryFilter(contract.filters.PropertyRegistered(), 0, "latest");
+  const logs = await NyayaWallet.queryLogs(contract, contract.filters.PropertyRegistered());
   const ids = [...new Set(logs.map(l => Number(l.args.tokenId)))].sort((a, b) => a - b);
   tokens = [];
   for (const id of ids) {

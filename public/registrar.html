@@ -489,7 +489,7 @@ async function adoptSession(session) {
 async function loadSigners() {
   const listEl = document.getElementById("judges-list");
   try {
-    const logs = await contract.queryFilter(contract.filters.JudgeRegistered(), 0, "latest");
+    const logs = await NyayaWallet.queryLogs(contract, contract.filters.JudgeRegistered());
     const addresses = [...new Set(logs.map(l => ethers.getAddress(l.args.signer)))];
     if (!addresses.length) {
       listEl.innerHTML = '<p style="font-size:13px;color:#94A3B8;">No signers registered yet.</p>';
@@ -541,7 +541,7 @@ async function loadSigners() {
 async function loadParcels() {
   const sel = document.getElementById("pec-tokenid");
   try {
-    const logs = await contract.queryFilter(contract.filters.PropertyRegistered(), 0, "latest");
+    const logs = await NyayaWallet.queryLogs(contract, contract.filters.PropertyRegistered());
     const ids = [...new Set(logs.map(l => l.args.tokenId.toString()))].sort((a, b) => Number(a) - Number(b));
     if (!ids.length) { sel.innerHTML = '<option value="">No parcels registered</option>'; return; }
     sel.replaceChildren();
