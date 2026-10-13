@@ -6,7 +6,9 @@
     "compile": "npx hardhat compile",
     "node": "npx hardhat node",
     "deploy": "npx hardhat run scripts/deploy.js --network localhost",
-    "serve": "npx http-server public -p 3000 -c-1"
+    "serve": "npx http-server public -p 3000 -c-1",
+    "orders-server": "node server/orders-server.js",
+    "demo": "concurrently \"npx http-server public -p 8080 -c-1\" \"node server/orders-server.js\""
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.2",

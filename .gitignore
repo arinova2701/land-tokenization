@@ -7,3 +7,5 @@ demo-wallets.json
 *.keystore
 keystore/
 besu-data/
+data/pending-orders.json
+public/config.json
