@@ -900,7 +900,7 @@ async function validateImport(parsed) {
   if (!Array.isArray(parsed.signatures) || parsed.signatures.length < 1 || parsed.signatures.length > ROLES.length) fail("Order must carry 1 to 3 signatures.");
 
   // 1. The hash must be the digest of the fields.
-  const fields = { tokenId: parsed.tokenId, caseNumber: parsed.caseNumber, orderExpiry: parsed.orderExpiry, nonce: parsed.nonce };
+  const fields = { action: parsed.action, tokenId: parsed.tokenId, caseNumber: parsed.caseNumber, orderExpiry: parsed.orderExpiry, nonce: parsed.nonce };
   if (hashOf(fields).toLowerCase() !== parsed.orderHash.toLowerCase()) fail("Order hash does not match the order fields. Import rejected.");
 
   if (!tokenInfo(parsed.tokenId)) fail("Token " + parsed.tokenId + " is not registered on this chain.");
