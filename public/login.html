@@ -84,6 +84,7 @@ nav {
         <div class="role-row"><span class="label">Court</span><span class="value" id="rc-court"></span></div>
       </div>
       <div id="rc-hint" class="msg msg-info hidden"></div>
+      <button class="btn btn-primary hidden" id="btn-network">Switch to the NyayaChain network</button>
       <a class="btn btn-primary" id="btn-continue" href="index.html">Continue</a>
       <button class="btn btn-secondary" id="btn-switch">Use a different account</button>
       <button class="btn btn-secondary" id="btn-signout">Sign out</button>
@@ -134,7 +135,7 @@ function showInstallNotice() {
     '" target="_blank" rel="noopener">Install MetaMask</a>, then reload this page. You can still browse as a public viewer.');
 }
 
-function renderSession(s, { autoRoute }) {
+async function renderSession(s, { autoRoute }) {
   if (!s) {
     $("view-connect").classList.remove("hidden");
     $("view-role").classList.add("hidden");
@@ -142,6 +143,23 @@ function renderSession(s, { autoRoute }) {
   }
   $("view-connect").classList.add("hidden");
   $("view-role").classList.remove("hidden");
+
+  // The role lives on the NyayaChain network. On any other network it cannot be read, so say that
+  // instead of showing a misleading "No role".
+  if (await NyayaWallet.isWrongNetwork()) {
+    $("rc-addr").textContent = NyayaWallet.shortAddress(s.address);
+    $("rc-addr").title = s.address;
+    const b = $("rc-role"); b.textContent = "Wrong network"; b.style.background = ROLE_COLORS.NONE.bg; b.style.color = ROLE_COLORS.NONE.fg;
+    $("rc-court").textContent = "—";
+    const h = $("rc-hint");
+    h.textContent = "MetaMask is on a different network. Switch to NyayaChain (chain " + NyayaWallet.CHAIN_ID + ") so your role can be read.";
+    h.classList.remove("hidden");
+    $("btn-continue").classList.add("hidden");
+    $("btn-network").classList.remove("hidden");
+    return;
+  }
+  $("btn-network").classList.add("hidden");
+  $("btn-continue").classList.remove("hidden");
 
   const roleKey = s.role || "NONE";
   const c = ROLE_COLORS[roleKey];
@@ -191,6 +209,11 @@ $("btn-signin").addEventListener("click", async () => {
   } finally {
     btn.disabled = false; btn.textContent = "Sign in with wallet";
   }
+});
+
+$("btn-network").addEventListener("click", async () => {
+  try { await NyayaWallet.ensureNetwork(); }
+  catch (e) { if (!(e && e.code === 4001)) showNoticeText("error", "Could not switch network: " + ((e && e.message) || e)); }
 });
 
 $("btn-switch").addEventListener("click", async () => {
