@@ -6,6 +6,7 @@
 <title>NyayaChain — Court Officer Portal</title>
 <link rel="icon" href="Logo-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<script src="order-digest.js"></script>
 <script src="wallet.js"></script>
 <script src="inspector.js"></script>
 <link rel="stylesheet" href="inspector.css">
@@ -512,9 +513,10 @@ const ABI = [
   "function getFreezeHistoryLength(uint256 tokenId) view returns (uint256)",
   "function getFreezeHistoryEntry(uint256 tokenId, uint256 index) view returns (uint256 timestamp, string caseNumber, address signer, bool isFreezeAction, uint256 nonce, uint256 checksBitmask)",
   "function getFreezeHistorySigners(uint256 tokenId, uint256 index) view returns (address[] signers, uint8[] roles)",
-  "function getOrderChecks(uint256 tokenId, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
-  "function submitFreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
-  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, bytes32 orderHash, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "function computeOrderDigest(uint8 action, uint256 tokenId, string caseNumber, uint256 orderExpiry, uint256 nonce) view returns (bytes32)",
+  "function getOrderChecks(uint8 action, uint256 tokenId, string caseNumber, uint256 orderExpiry, uint256 nonce, bytes[] signatures) view returns (uint256 bitmask)",
+  "function submitFreezeOrder(uint256 tokenId, string caseNumber, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
+  "function submitUnfreezeOrder(uint256 tokenId, string caseNumber, uint256 orderExpiry, uint256 nonce, bytes[] signatures)",
   "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
 ];
 
@@ -530,7 +532,7 @@ const shortSig  = (s) => s.slice(0, 10) + "…" + s.slice(-6);
 const inr = (v) => "₹" + Number(v).toLocaleString("en-IN");
 const fmtTime = (unix) => new Date(unix * 1000).toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" });
 
-let readProvider, contract, config, checksCatalog;
+let readProvider, contract, config, checksCatalog, chainId;
 let connectedSigner = null, connectedAddress = null, connectedRole = null;  // role is a string or null
 let tokens = [];            // [{ id, territory, value, frozen }]
 let draft = null;           // order built in step 1, not yet signed
@@ -538,12 +540,10 @@ let order = null;           // order being collected: fields + signatures + stat
 
 // ── Order basics ────────────────────────────────────────────────────────────
 
-// Digest recipe from docs/interfaces.md §1.4 (abi.encode, not packed).
+// Digest recipe from docs/interfaces.md §1.4 (Sprint 0c — bound to chainId, contract, action).
 function hashOf(o) {
-  return ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
-    ["uint256", "string", "uint256", "uint256"],
-    [o.tokenId, o.caseNumber, o.orderExpiry, o.nonce]
-  ));
+  return NyayaDigest.compute(o.action, o.tokenId, o.caseNumber, o.orderExpiry, o.nonce,
+    chainId, config.contractAddress);
 }
 
 function tokenInfo(id) { return tokens.find(t => t.id === Number(id)); }
@@ -604,6 +604,7 @@ async function init() {
   try {
     readProvider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
     const network = await readProvider.getNetwork();
+    chainId = Number(network.chainId);
     config = await fetch("config.json").then(r => r.json());
     checksCatalog = await fetch("checks.json").then(r => r.json());
     contract = new ethers.Contract(config.contractAddress, ABI, readProvider);
@@ -993,13 +994,8 @@ async function runChecks() {
   list.replaceChildren(...rows.map(c => checkRow(c, "wait")));
   try {
     const sigs = ROLES.map(r => slotFor(r).signature);
-    let mask = BigInt(await contract.getOrderChecks(order.tokenId, order.orderHash, order.orderExpiry, order.nonce, sigs));
-    // getOrderChecks takes no action, so it never reports the unfreeze-only "token is frozen" bit,
-    // although submitUnfreezeOrder enforces it. Read the same fact from the contract so unfreeze can proceed.
-    if (order.action === "unfreeze") {
-      const fz = checksCatalog.checks.find(c => c.id === "FROZEN_STATE");
-      if (fz && await contract.frozen(order.tokenId)) mask |= (1n << BigInt(fz.bit));
-    }
+    const actionId = order.action === "freeze" ? 0 : 1;
+    let mask = BigInt(await contract.getOrderChecks(actionId, order.tokenId, order.caseNumber, order.orderExpiry, order.nonce, sigs));
     if (seq !== checksSeq) return;
     let all = true;
     list.replaceChildren(...rows.map(c => {
@@ -1042,8 +1038,8 @@ async function submitOrder() {
   try {
     const c = contract.connect(connectedSigner);
     const tx = order.action === "freeze"
-      ? await c.submitFreezeOrder(order.tokenId, order.caseNumber, order.orderHash, order.orderExpiry, order.nonce, sigs)
-      : await c.submitUnfreezeOrder(order.tokenId, order.caseNumber, order.orderHash, order.orderExpiry, order.nonce, sigs);
+      ? await c.submitFreezeOrder(order.tokenId, order.caseNumber, order.orderExpiry, order.nonce, sigs)
+      : await c.submitUnfreezeOrder(order.tokenId, order.caseNumber, order.orderExpiry, order.nonce, sigs);
     order.txHash = tx.hash;
     const receipt = await tx.wait();
 

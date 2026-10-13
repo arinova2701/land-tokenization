@@ -22,26 +22,23 @@
 const hre   = require("hardhat");
 const fs    = require("fs");
 const path  = require("path");
+const { NyayaDigest } = require("../public/order-digest");
 
 const RESULTS_FILE = path.join(__dirname, "../data/benchmark-results.json");
 const TX_COUNT     = 100;
 const TOKEN_ID     = 1;
 const ORDER_TTL_S  = 3600;
 
-// ─── Order construction (three-signer) ───────────────────────────────────────
+// ─── Order construction (three-signer, Sprint 0c digest) ─────────────────────
 
-async function makeOrder(signers, tokenId, caseNumber, expiryOffset, nonce) {
+async function makeOrder(signers, tokenId, caseNumber, expiryOffset, nonce, chainId, contractAddress) {
   const expiry = Math.floor(Date.now() / 1000) + expiryOffset;
-  const packed = hre.ethers.solidityPacked(
-    ["string", "uint256", "uint256", "string", "uint256"],
-    [caseNumber, tokenId, expiry, "freeze", nonce]
-  );
-  const hash = hre.ethers.keccak256(packed);
+  const hash = NyayaDigest.compute("freeze", tokenId, caseNumber, expiry, nonce, chainId, contractAddress);
   const sigs = [];
   for (const s of signers) {
     sigs.push(await s.signMessage(hre.ethers.getBytes(hash)));
   }
-  return { hash, expiry, sigs };
+  return { expiry, sigs };
 }
 
 // ─── Statistics ───────────────────────────────────────────────────────────────
@@ -135,6 +132,7 @@ async function main() {
   const networkName = hre.network.name;
   const provider    = hre.ethers.provider;
   const { chainId } = await provider.getNetwork();
+  let contractAddress; // set after deploy
 
   console.log(`\n${"═".repeat(50)}`);
   console.log(`  Benchmark — ${networkName}  (chain ID ${chainId})`);
@@ -156,6 +154,7 @@ async function main() {
 
   console.log("\n[ Setup ]");
   const contract = await setupContracts(admin, judge, clerk);
+  contractAddress = await contract.getAddress();
 
   console.log(`\n[ Sending ${TX_COUNT} freeze orders ]`);
   const latencies = [];
@@ -163,11 +162,11 @@ async function main() {
 
   for (let i = 0; i < TX_COUNT; i++) {
     const caseNumber = `BENCH-${networkName.toUpperCase()}-${String(i).padStart(3, "0")}`;
-    const order      = await makeOrder([judge, clerk, admin], TOKEN_ID, caseNumber, ORDER_TTL_S, i);
+    const order      = await makeOrder([judge, clerk, admin], TOKEN_ID, caseNumber, ORDER_TTL_S, i, chainId, contractAddress);
 
     const t0 = Date.now();
     const tx = await contract.connect(judge).submitFreezeOrder(
-      TOKEN_ID, caseNumber, order.hash, order.expiry, i, order.sigs
+      TOKEN_ID, caseNumber, order.expiry, i, order.sigs
     );
     await tx.wait();
     const latency = Date.now() - t0;

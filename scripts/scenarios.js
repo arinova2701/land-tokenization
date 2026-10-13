@@ -4,13 +4,14 @@
 const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
+const { NyayaDigest } = require("../public/order-digest");
 
 const ROOT = path.resolve(__dirname, "..");
 const ABI = [
   "function judgeNonce(address) view returns (uint256)",
-  "function getOrderChecks(uint256,bytes32,uint256,uint256,bytes[]) view returns (uint256)",
-  "function submitFreezeOrder(uint256,string,bytes32,uint256,uint256,bytes[])",
-  "function submitUnfreezeOrder(uint256,string,bytes32,uint256,uint256,bytes[])",
+  "function getOrderChecks(uint8,uint256,string,uint256,uint256,bytes[]) view returns (uint256)",
+  "function submitFreezeOrder(uint256,string,uint256,uint256,bytes[])",
+  "function submitUnfreezeOrder(uint256,string,uint256,uint256,bytes[])",
   "function frozen(uint256) view returns (bool)",
   "event OrderAccepted(uint256 indexed tokenId,address indexed signer,string caseNumber,uint256 nonce,uint256 checksBitmask,address[] signers,uint8[] roles)",
   "event OrderVacated(uint256 indexed tokenId,address indexed signer,string caseNumber,uint256 nonce,uint256 checksBitmask,address[] signers,uint8[] roles)"
@@ -48,6 +49,8 @@ async function runScenario(id) {
   const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
   const network = await provider.getNetwork();
   if (network.chainId !== 1337n) throw Error("Demo runner requires chain 1337");
+  const chainId = Number(network.chainId);
+  const contractAddress = config.contractAddress;
   if (await provider.getCode(config.contractAddress) === "0x") throw Error("Registry contract is not deployed");
   const roles = Object.fromEntries(["judge","clerk","registrar","citizen"].map(role => [
     role,new ethers.Wallet(wallets[role].privateKey,provider)
@@ -72,9 +75,8 @@ async function runScenario(id) {
   if (id === "wrong-nonce") nonce += 1n;
   const expiry = BigInt(Math.floor(Date.now()/1000) + (id === "expired" ? -60 : 3600));
   const caseNumber = `DEMO-${id.toUpperCase()}-${Date.now()}`;
-  const orderHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
-    ["uint256","string","uint256","uint256"],[tokenId,caseNumber,expiry,nonce]
-  ));
+  // Sprint 0c: digest binds to chainId, contractAddress, action, and all fields.
+  const orderHash = NyayaDigest.compute(action, tokenId, caseNumber, expiry, nonce, chainId, contractAddress);
   step("Prepare order",`Token ${tokenId}, ${action}`,`Token ${tokenId}, ${action}; nonce ${nonce}; digest ${orderHash}`,true);
   const signerNames = id === "missing-registrar" ? ["judge","clerk"] :
     id === "missing-clerk" ? ["judge","registrar"] :
@@ -83,15 +85,16 @@ async function runScenario(id) {
   const signatures = [];
   for (const role of signerNames) signatures.push(await roles[role].signMessage(ethers.getBytes(orderHash)));
   step("Collect signatures",signerNames.join(", "),signerNames.join(", "),true);
-  const preflight = await contract.getOrderChecks(tokenId,orderHash,expiry,nonce,signatures);
+  const actionId = action === "unfreeze" ? 1 : 0;
+  const preflight = await contract.getOrderChecks(actionId,tokenId,caseNumber,expiry,nonce,signatures);
   step("On-chain preflight","Read contract check bits",`0x${preflight.toString(16)}`,true);
   const submit = async () => {
     const method = action === "freeze" ? contract.submitFreezeOrder : contract.submitUnfreezeOrder;
     try {
       // A static call gives the exact Solidity revert string without a failed on-chain transaction.
-      await method.staticCall(tokenId,caseNumber,orderHash,expiry,nonce,signatures);
+      await method.staticCall(tokenId,caseNumber,expiry,nonce,signatures);
     } catch(e) { return {ok:false,reason:getReason(e)}; }
-    const tx = await method(tokenId,caseNumber,orderHash,expiry,nonce,signatures);
+    const tx = await method(tokenId,caseNumber,expiry,nonce,signatures);
     const receipt = await tx.wait();
     const eventName = action === "freeze" ? "OrderAccepted" : "OrderVacated";
     const event = receipt.logs.map(log => {
@@ -103,7 +106,7 @@ async function runScenario(id) {
   if (id === "replay") {
     step("First submission","Order accepted",first.ok ? `Accepted in block ${first.blockNumber}` : first.reason,first.ok);
     if (first.ok) {
-      const replayBits = await contract.getOrderChecks(tokenId,orderHash,expiry,nonce,signatures);
+      const replayBits = await contract.getOrderChecks(actionId,tokenId,caseNumber,expiry,nonce,signatures);
       step("Replay preflight","Replay bit unset",`0x${replayBits.toString(16)}`,!(replayBits & 2n));
     }
     first = await submit();
