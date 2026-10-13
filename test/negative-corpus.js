@@ -201,14 +201,24 @@ describe("Negative Corpus (30 cases)", function () {
   this.timeout(600_000);
 
   // ── Case 1: Unregistered signer ───────────────────────────────────────────
+  // Uses staticCall: Besu's eth_estimateGas can hang when the first signer in
+  // a multi-sig array is completely unregistered (cold storage read + early
+  // revert), even though the receipt path works on Hardhat.
   it("Case 1 — unregistered signer is rejected", async function () {
     const { c, admin, clerkVellore, outsider } = await deploy();
     // outsider is unregistered; clerkVellore and admin are valid
     const o = await makeOrder([outsider, clerkVellore, admin], 1, "CASE-1", 3600, "freeze", 0);
-    await expectRevert(
-      c.submitFreezeOrder(1, "CASE-1", o.hash, o.expiry, 0, o.sigs),
-      "Unregistered or revoked signer"
-    );
+    let caught = false;
+    try {
+      await c.submitFreezeOrder.staticCall(1, "CASE-1", o.hash, o.expiry, 0, o.sigs);
+    } catch (err) {
+      const msg = err.reason || err.shortMessage || err.message || String(err);
+      if (!msg.includes("Unregistered or revoked signer")) {
+        throw new Error('Expected "Unregistered or revoked signer" but got: ' + msg);
+      }
+      caught = true;
+    }
+    if (!caught) throw new Error("Expected revert but staticCall succeeded");
   });
 
   // ── Case 2: Revoked signer ────────────────────────────────────────────────
@@ -223,6 +233,8 @@ describe("Negative Corpus (30 cases)", function () {
   });
 
   // ── Case 3: Expired judicial key ──────────────────────────────────────────
+  // Uses staticCall: Besu's eth_estimateGas can hang on early-revert paths in
+  // the signature loop for certain key validity states.
   it("Case 3 — expired judicial key is rejected", async function () {
     const { c, admin, judgeVellore, clerkVellore, vellore } = await deploy();
     const past = Math.floor(Date.now() / 1000) - 100;
@@ -230,24 +242,31 @@ describe("Negative Corpus (30 cases)", function () {
       judgeVellore.address, "District Court Vellore", 0, past, 3, vellore, 1
     )).wait();
     const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-3", 3600, "freeze", 0);
-    await expectRevert(
-      c.submitFreezeOrder(1, "CASE-3", o.hash, o.expiry, 0, o.sigs),
-      "Judicial key expired or not yet valid"
-    );
+    let caught = false;
+    try {
+      await c.submitFreezeOrder.staticCall(1, "CASE-3", o.hash, o.expiry, 0, o.sigs);
+    } catch (err) {
+      const msg = err.reason || err.shortMessage || err.message || String(err);
+      if (!msg.includes("Judicial key expired or not yet valid")) {
+        throw new Error('Expected "Judicial key expired or not yet valid" but got: ' + msg);
+      }
+      caught = true;
+    }
+    if (!caught) throw new Error("Expected revert but staticCall succeeded");
   });
 
   // ── Case 4: Not-yet-valid judicial key ───────────────────────────────────
+  // Uses staticCall: Besu's gas estimator hangs on early-revert paths in
+  // _validateSignatures.  validFrom is set 24 hours ahead — enough to make
+  // the key invalid without the extreme far-future value that could also stall
+  // Besu's eth_call simulation.
   it("Case 4 — not-yet-valid judicial key is rejected", async function () {
     const { c, admin, judgeVellore, clerkVellore, vellore } = await deploy();
-    const future = Math.floor(Date.now() / 1000) + 9999999;
+    const future = Math.floor(Date.now() / 1000) + 86400; // 24 h from now
     await (await c.registerJudge(
-      judgeVellore.address, "District Court Vellore", future, future + 1, 3, vellore, 1
+      judgeVellore.address, "District Court Vellore", future, future + 86400, 3, vellore, 1
     )).wait();
     const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-4", 3600, "freeze", 0);
-    // Use staticCall (eth_call) instead of a mined transaction. On Besu, the gas
-    // estimator can hang when simulating a revert gated on a very-far-future
-    // validFrom timestamp, and the receipt path does not propagate the reason string.
-    // staticCall avoids both issues while still verifying the exact revert reason.
     let caught4 = false;
     try {
       await c.submitFreezeOrder.staticCall(1, "CASE-4", o.hash, o.expiry, 0, o.sigs);
