@@ -1,0 +1,19 @@
+.nyaya-inspector { margin: 1rem 0; color: #17233b; font: 15px/1.5 system-ui, sans-serif; }
+.nyaya-inspector details { border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.nyaya-inspector summary { cursor: pointer; padding: 1rem 1.25rem; font-weight: 700; color: #123978; }
+.nyaya-inspector summary span { color: #64748b; font-weight: 400; }
+.inspector-content { padding: 0 1.25rem 1.25rem; }
+.inspector-content section { border-top: 1px solid #e2e8f0; padding: 1rem 0; }
+.inspector-content h3 { margin: 0 0 .65rem; color: #0f172a; }
+.inspector-content p { margin: .5rem 0; }
+.inspector-content dl { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: .5rem 1rem; margin: 0; }
+.inspector-content dt { font-weight: 700; }
+.inspector-content dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.inspector-content code { overflow-wrap: anywhere; font-size: .9em; }
+.inspector-scroll { overflow-x: auto; }
+.inspector-content table { width: 100%; border-collapse: collapse; min-width: 600px; }
+.inspector-content th, .inspector-content td { text-align: left; vertical-align: top; padding: .5rem; border-bottom: 1px solid #e2e8f0; }
+.inspector-content th { background: #f8fafc; }
+.inspector-content .check-pass { color: #166534; font-weight: 700; }
+.inspector-content .check-fail { color: #b91c1c; font-weight: 700; }
+@media (max-width: 640px) { .inspector-content dl { grid-template-columns: 1fr; gap: .1rem; } .inspector-content dd { margin-bottom: .6rem; } }
