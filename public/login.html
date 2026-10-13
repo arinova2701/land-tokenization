@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NyayaChain — Sign in</title>
+<link rel="icon" href="Logo-icon.png">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<script src="wallet.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url('fonts/aileron/Aileron-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; font-size: 18px; background: #F8FAFC; color: #475569; padding-top: 88px; min-height: 100vh; }
+h1, h2, h3 { font-family: 'Aileron', system-ui, sans-serif; color: #0F172A; }
+
+nav {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  height: 64px; max-width: 1200px; width: calc(100% - 48px);
+  background: rgba(11,23,54,0.95); display: flex; align-items: center;
+  padding: 0 32px; z-index: 100; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+}
+.nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.nav-brand img { height: 36px; display: block; }
+.nav-brand-name { font-family: 'Aileron', system-ui, sans-serif; font-weight: 700; font-size: 21px; color: #fff; letter-spacing: 3px; text-transform: uppercase; }
+
+.wrap { max-width: 520px; margin: 40px auto; padding: 0 16px; }
+.card { background: #fff; border: 1px solid #E2E8F0; border-radius: 14px; padding: 32px; box-shadow: 0 2px 12px rgba(15,23,42,0.06); }
+.card h1 { font-size: 28px; margin-bottom: 8px; }
+.lead { font-size: 17px; line-height: 1.6; margin-bottom: 24px; }
+.btn { display: block; width: 100%; padding: 14px 20px; border-radius: 10px; font-size: 18px; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid transparent; text-align: center; text-decoration: none; }
+.btn-primary { background: #0B1736; color: #fff; }
+.btn-primary:hover { background: #16264f; }
+.btn-primary:disabled { opacity: .6; cursor: wait; }
+.btn-secondary { background: #fff; color: #0F172A; border-color: #CBD5E1; margin-top: 12px; }
+.btn-secondary:hover { background: #F1F5F9; }
+.divider { text-align: center; color: #94A3B8; font-size: 15px; margin: 18px 0 0; }
+.note { font-size: 15px; color: #64748B; margin-top: 20px; line-height: 1.5; }
+.msg { border-radius: 10px; padding: 12px 16px; font-size: 16px; line-height: 1.5; margin-bottom: 20px; }
+.msg-info { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF; }
+.msg-warn { background: #FEF3C7; border: 1px solid #FCD34D; color: #92400E; }
+.msg-error { background: #FEE2E2; border: 1px solid #FCA5A5; color: #991B1B; }
+.msg a { color: inherit; font-weight: 600; }
+.role-card { border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; background: #F8FAFC; }
+.role-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; font-size: 16px; }
+.role-row .label { color: #64748B; }
+.role-row .value { color: #0F172A; font-weight: 600; text-align: right; }
+.role-row .addr { font-family: monospace; font-weight: 500; }
+.badge { padding: 3px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; letter-spacing: .5px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-brand">
+    <img src="Logo-icon.png" alt="NyayaChain icon">
+    <span class="nav-brand-name">NyayaChain</span>
+  </a>
+</nav>
+
+<div class="wrap">
+  <div class="card">
+    <h1>Sign in</h1>
+    <p class="lead">Connect your wallet to continue. There is no username or password: access is decided by your role recorded on-chain.</p>
+
+    <div id="notice"></div>
+
+    <!-- Shown before a wallet is connected -->
+    <div id="view-connect">
+      <button class="btn btn-primary" id="btn-signin">Sign in with wallet</button>
+      <div class="divider">or</div>
+      <a class="btn btn-secondary" href="index.html">Continue as public viewer</a>
+    </div>
+
+    <!-- Shown once a wallet is connected -->
+    <div id="view-role" class="hidden">
+      <div class="role-card">
+        <div class="role-row"><span class="label">Address</span><span class="value addr" id="rc-addr"></span></div>
+        <div class="role-row"><span class="label">Role</span><span class="value"><span class="badge" id="rc-role"></span></span></div>
+        <div class="role-row"><span class="label">Court</span><span class="value" id="rc-court"></span></div>
+      </div>
+      <div id="rc-hint" class="msg msg-info hidden"></div>
+      <a class="btn btn-primary" id="btn-continue" href="index.html">Continue</a>
+      <button class="btn btn-secondary" id="btn-switch">Use a different account</button>
+      <button class="btn btn-secondary" id="btn-signout">Sign out</button>
+    </div>
+
+    <p class="note">The public land register needs no wallet. Judges, clerks and registrars sign in with the wallet their court registered on-chain.</p>
+  </div>
+</div>
+
+<script>
+const ROLE_COLORS = {
+  JUDGE:     { bg: "#DBEAFE", fg: "#1D4ED8" },
+  CLERK:     { bg: "#FEF3C7", fg: "#B45309" },
+  REGISTRAR: { bg: "#DCFCE7", fg: "#15803D" },
+  NONE:      { bg: "#E2E8F0", fg: "#475569" },
+};
+const PAGE_LABELS = { "court.html": "Court workspace", "registrar.html": "Registrar portal", "index.html": "Public land register" };
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(window.location.search);
+const reason = params.get("reason");
+
+function showNotice(kind, html) {
+  $("notice").innerHTML = '<div class="msg msg-' + kind + '">' + html + '</div>';
+}
+function showNoticeText(kind, text) {
+  const div = document.createElement("div");
+  div.className = "msg msg-" + kind;
+  div.textContent = text;
+  $("notice").replaceChildren(div);
+}
+
+// Messages for why the user landed here (set by NyayaWallet.mountHeader redirects).
+function explainReason() {
+  const role = params.get("role");
+  const need = (params.get("need") || "").split(",").filter(Boolean).map(r => r.toLowerCase()).join(" or ");
+  if (reason === "connect")    showNoticeText("info", "Please sign in with your wallet to open that page.");
+  else if (reason === "signedout") showNoticeText("info", "You have been signed out.");
+  else if (reason === "wrongrole") {
+    const have = role && role !== "NONE" ? "your wallet's role is " + role.toLowerCase() : "your wallet has no role registered on-chain";
+    showNoticeText("warn", "That page is for " + (need || "authorised signers") + " only, and " + have + ". Switch to the right account or continue below.");
+  }
+  else if (reason === "nowallet") showInstallNotice();
+}
+
+function showInstallNotice() {
+  showNotice("warn", 'MetaMask was not found in this browser. <a href="' + NyayaWallet.METAMASK_URL +
+    '" target="_blank" rel="noopener">Install MetaMask</a>, then reload this page. You can still browse as a public viewer.');
+}
+
+function renderSession(s, { autoRoute }) {
+  if (!s) {
+    $("view-connect").classList.remove("hidden");
+    $("view-role").classList.add("hidden");
+    return;
+  }
+  $("view-connect").classList.add("hidden");
+  $("view-role").classList.remove("hidden");
+
+  const roleKey = s.role || "NONE";
+  const c = ROLE_COLORS[roleKey];
+  $("rc-addr").textContent = NyayaWallet.shortAddress(s.address);
+  $("rc-addr").title = s.address;
+  const badge = $("rc-role");
+  badge.textContent = s.role || "No role";
+  badge.style.background = c.bg;
+  badge.style.color = c.fg;
+  $("rc-court").textContent = s.courtName || "—";
+
+  const dest = NyayaWallet.homeFor(s.role);
+  $("btn-continue").href = dest;
+  $("btn-continue").textContent = "Continue to " + (PAGE_LABELS[dest] || dest);
+
+  const hint = $("rc-hint");
+  if (!s.role) {
+    hint.textContent = "This wallet has no active role on-chain, so you will see the public land register. Ask the registrar to register your wallet as a signer.";
+    hint.classList.remove("hidden");
+  } else {
+    hint.classList.add("hidden");
+  }
+
+  if (autoRoute) {
+    setTimeout(() => {
+      // Only route if the user has not changed account or left the signed-in view meanwhile.
+      const now = NyayaWallet.getSession();
+      if (now && now.address === s.address) window.location.href = dest;
+    }, 1500);
+  }
+}
+
+$("btn-signin").addEventListener("click", async () => {
+  const btn = $("btn-signin");
+  if (!NyayaWallet.hasMetaMask()) { showInstallNotice(); return; }
+  btn.disabled = true; btn.textContent = "Waiting for wallet…";
+  try {
+    await NyayaWallet.connectWallet();           // popup, then network switch, then role read
+    const s = NyayaWallet.getSession();
+    if (!s) { showNoticeText("error", "Could not read your account. Please try again."); return; }
+    $("notice").replaceChildren();
+    renderSession(s, { autoRoute: true });
+  } catch (e) {
+    if (e && e.code === "NO_WALLET") showInstallNotice();
+    else if (e && (e.code === 4001 || e.code === "ACTION_REJECTED")) showNoticeText("warn", "Sign-in was cancelled in your wallet. Click the button to try again.");
+    else showNoticeText("error", "Wallet connection failed: " + ((e && e.message) || e));
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign in with wallet";
+  }
+});
+
+$("btn-switch").addEventListener("click", async () => {
+  try {
+    await NyayaWallet.switchAccount();
+    renderSession(NyayaWallet.getSession(), { autoRoute: false });
+  } catch (e) {
+    if (!(e && e.code === 4001)) showNoticeText("error", "Could not switch account: " + ((e && e.message) || e));
+  }
+});
+
+$("btn-signout").addEventListener("click", async () => {
+  await NyayaWallet.signOut();
+  showNoticeText("info", "You have been signed out.");
+  renderSession(null, {});
+});
+
+// Keep the card in step with account changes made inside MetaMask.
+window.addEventListener("nyaya:session-changed", (e) => renderSession(e.detail, { autoRoute: false }));
+
+(async function init() {
+  if (reason !== "nowallet") explainReason(); else if (!NyayaWallet.hasMetaMask()) showInstallNotice();
+  if (!NyayaWallet.hasMetaMask()) { $("btn-signin").textContent = "Install MetaMask to sign in"; showInstallNotice(); return; }
+  await NyayaWallet.ready;
+  // An existing session is shown, never auto-routed, so redirects from guarded pages cannot loop.
+  renderSession(NyayaWallet.getSession(), { autoRoute: false });
+})();
+</script>
+</body>
+</html>

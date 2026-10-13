@@ -298,19 +298,11 @@ footer {
 <!-- ── Page Content ── -->
 <div class="page-content">
 
-  <!-- Wallet Connect Card -->
-  <div class="card">
-    <div class="card-title">Wallet</div>
-    <div class="wallet-bar" id="wallet-bar">
-      <span id="wallet-addr" style="font-family:monospace;font-size:15px;color:#94A3B8;">Not connected</span>
-      <span class="wallet-role role-none" id="wallet-role">—</span>
-      <span style="flex:1"></span>
-      <button class="btn btn-primary" id="btn-connect" onclick="connectWallet()" style="padding:9px 22px;font-size:17px;">Connect Wallet</button>
-    </div>
-    <p style="font-size:15px;color:#94A3B8;margin-top:4px;">
-      Use a different Chrome profile per role. The judge signs first, then exports the order JSON for the co-signer to import.
-    </p>
-  </div>
+  <!-- Shared session header (role badge, address, sign out) — rendered by NyayaWallet.mountHeader -->
+  <div id="session-header"></div>
+  <p style="font-size:15px;color:#94A3B8;margin:-4px 0 16px;">
+    Use a different Chrome profile per role. The judge signs first, then exports the order JSON for the co-signer to import.
+  </p>
 
   <!-- Order Form Card -->
   <div class="card">
@@ -509,73 +501,43 @@ async function init() {
     document.getElementById("navStatus").classList.add("connected");
 
     updatePropertyDisplay();
-
-    // Register wallet change listener
-    NyayaWallet.onWalletChange(() => {
-      connectedSigner = null; connectedAddress = null; connectedRole = 0;
-      updateWalletUI();
-    });
   } catch (e) {
     connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
     connBar.className = "conn-bar error";
     document.getElementById("navStatusText").textContent = "Not connected";
     console.error(e);
   }
+
+  // Shared header + guard: no wallet, or a wallet with no on-chain role, goes to login.html.
+  // REGISTRAR is allowed because the registrar co-signs orders here (login routes it to registrar.html first).
+  NyayaWallet.mountHeader({
+    container: "#session-header",
+    allowedRoles: ["JUDGE", "CLERK", "REGISTRAR"],
+    onSession: adoptSession
+  });
 }
 
-async function connectWallet() {
-  const btn = document.getElementById("btn-connect");
-  btn.textContent = "Connecting..."; btn.disabled = true;
-  try {
-    const { provider, signer, address } = await NyayaWallet.connectWallet();
-    connectedSigner = signer;
-    connectedAddress = address;
-    // Read role from registry
+const ROLE_IDS = { JUDGE: 1, CLERK: 2, REGISTRAR: 3 };
+
+// Called by the shared header whenever the (allowed) session is set or changes.
+async function adoptSession(session) {
+  connectedAddress = session.address;
+  connectedRole = ROLE_IDS[session.role] || 0;
+  connectedSigner = await new ethers.BrowserProvider(window.ethereum).getSigner();
+
+  // Judges get their next nonce filled in automatically
+  if (connectedRole === 1 && contract) {
     try {
-      const info = await contract.registry(address);
-      connectedRole = info.active ? Number(info.role) : 0;
-    } catch (_) { connectedRole = 0; }
-
-    // Update nonce if judge
-    if (connectedRole === 1) {
-      const nonce = await contract.judgeNonce(address);
+      const nonce = await contract.judgeNonce(session.address);
       document.getElementById("court-nonce").value = nonce.toString();
-    }
-
-    updateWalletUI();
-  } catch (e) {
-    alert("Wallet connection failed: " + (e.message || e));
-  } finally {
-    btn.textContent = "Connect Wallet"; btn.disabled = false;
+    } catch (_) { /* leave the field as is */ }
   }
+  updateWalletUI();
 }
 
 function updateWalletUI() {
-  const addrEl  = document.getElementById("wallet-addr");
-  const roleEl  = document.getElementById("wallet-role");
-  const signBtn = document.getElementById("btn-sign");
-
-  if (!connectedAddress) {
-    addrEl.textContent = "Not connected";
-    roleEl.textContent = "—";
-    roleEl.className = "wallet-role role-none";
-    signBtn.disabled = true;
-    return;
-  }
-
-  const short = connectedAddress.slice(0, 6) + "..." + connectedAddress.slice(-4);
-  addrEl.textContent = short;
-
-  if (connectedRole === 0) {
-    roleEl.textContent = "No role registered";
-    roleEl.className = "wallet-role role-none";
-    signBtn.disabled = true;
-  } else {
-    roleEl.textContent = ROLE_NAMES[connectedRole] || "UNKNOWN";
-    roleEl.className = "wallet-role role-" + (connectedRole === 1 ? "judge" : connectedRole === 2 ? "clerk" : "registrar");
-    // Only JUDGE can initiate; CLERK/REGISTRAR can co-sign via import
-    signBtn.disabled = connectedRole !== 1;
-  }
+  // Only JUDGE can initiate; CLERK can co-sign via import
+  document.getElementById("btn-sign").disabled = connectedRole !== 1;
 }
 
 async function updatePropertyDisplay() {

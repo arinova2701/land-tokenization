@@ -251,26 +251,15 @@ footer {
 <!-- ── Page Content ── -->
 <div class="page-content">
 
-  <!-- Wallet Connect Card -->
-  <div class="card">
-    <div class="card-title">Wallet</div>
-    <div class="wallet-bar" id="wallet-bar">
-      <span id="wallet-addr" style="font-family:monospace;font-size:15px;color:#94A3B8;">Not connected</span>
-      <span class="wallet-role role-none" id="wallet-role">—</span>
-      <span style="flex:1"></span>
-      <button class="btn btn-primary" id="btn-connect" onclick="connectWallet()" style="padding:9px 22px;font-size:17px;">Connect Wallet</button>
-    </div>
-    <p style="font-size:15px;color:#94A3B8;margin-top:4px;">
-      Admin actions require a wallet registered as ROLE_REGISTRAR. Import the registrar key from demo-wallets.json into MetaMask.
-    </p>
-  </div>
+  <!-- Shared session header (role badge, address, sign out) — rendered by NyayaWallet.mountHeader -->
+  <div id="session-header"></div>
 
   <!-- Register Card -->
   <div class="card">
-    <div class="card-title">Register Authorized Judge</div>
+    <div class="card-title">Register Authorized Signer</div>
 
     <div class="form-group">
-      <label for="reg-address">Judge Wallet Address</label>
+      <label for="reg-address">Signer Wallet Address</label>
       <input type="text" id="reg-address" placeholder="0x...">
     </div>
 
@@ -322,14 +311,14 @@ footer {
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" id="btn-register" onclick="registerJudge()" disabled>Register Judge</button>
+      <button class="btn btn-primary" id="btn-register" onclick="registerJudge()" disabled>Register Signer</button>
     </div>
 
     <div class="revoke-section">
       <div class="revoke-title">Revoke Authorization</div>
-      <div class="revoke-note">Immediately disables a judge's ability to submit freeze orders. Address is pre-filled from the field above.</div>
+      <div class="revoke-note">Immediately disables this signer's key, so its signatures no longer count towards a freeze or unfreeze order. Uses the address in the field above.</div>
       <div class="btn-row" style="margin-top:0;">
-        <button class="btn btn-danger" id="btn-revoke" onclick="revokeJudge()" disabled>Revoke Judge</button>
+        <button class="btn btn-danger" id="btn-revoke" onclick="revokeJudge()" disabled>Revoke Signer</button>
       </div>
     </div>
 
@@ -375,9 +364,7 @@ footer {
         <div class="form-group">
           <label for="pec-tokenid">Property Token</label>
           <select id="pec-tokenid">
-            <option value="1">Token 1 — Vellore</option>
-            <option value="2">Token 2 — Chennai</option>
-            <option value="3">Token 3 — Kadapa</option>
+            <option value="">Loading parcels…</option>
           </select>
         </div>
         <div class="form-group">
@@ -398,7 +385,7 @@ footer {
 
   <!-- Registered Judges Preview Card -->
   <div class="card">
-    <div class="card-title">Registered Judges</div>
+    <div class="card-title">Registered Signers</div>
     <div id="judges-list"><p style="font-size:13px;color:#94A3B8;">Loading...</p></div>
   </div>
 
@@ -423,8 +410,19 @@ const ABI = [
   "function setParcelDeclaredValue(uint256 tokenId, uint256 value)",
   "function setCourtLevelMaxValue(uint8 courtLevel, uint256 maxValue)",
   "function registerJudge(address signer, string courtName, uint256 validFrom, uint256 validUntil, uint8 courtLevel, bytes32 territory, uint8 role)",
-  "function revokeJudge(address signer)"
+  "function revokeJudge(address signer)",
+  "event JudgeRegistered(address indexed signer, string courtName, uint8 courtLevel, uint8 role, string territory)",
+  "event PropertyRegistered(uint256 indexed tokenId, string territory, uint256 declaredValue)"
 ];
+
+// Chain values (court names etc.) are untrusted text: never put them into innerHTML unescaped.
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+const UNLIMITED = (2n ** 256n - 1n);
+function inr(v) {
+  return BigInt(v) === UNLIMITED ? "unlimited" : "₹" + Number(v).toLocaleString("en-IN");
+}
 
 const COURT_LEVELS = { 1: "District Munsif", 2: "Sub Court", 3: "District Court", 4: "High Court" };
 const ROLE_NAMES   = { 1: "JUDGE", 2: "CLERK", 3: "REGISTRAR" };
@@ -456,111 +454,120 @@ async function init() {
     document.getElementById("navStatusText").textContent = "Connected";
     document.getElementById("navStatus").classList.add("connected");
 
-    loadJudges();
+    loadSigners();
+    loadParcels();
     loadLevelMaxValues();
-
-    NyayaWallet.onWalletChange(() => {
-      connectedSigner = null; connectedAddress = null; connectedRole = 0;
-      updateWalletUI();
-    });
   } catch (e) {
     connBar.textContent = "ERROR: Could not connect to 127.0.0.1:8545 — is the node running?";
     connBar.className = "conn-bar error";
     document.getElementById("navStatusText").textContent = "Not connected";
     console.error(e);
   }
-}
 
-async function connectWallet() {
-  const btn = document.getElementById("btn-connect");
-  btn.textContent = "Connecting..."; btn.disabled = true;
-  try {
-    const { provider, signer, address } = await NyayaWallet.connectWallet();
-    connectedSigner  = signer;
-    connectedAddress = address;
-    try {
-      const info = await contract.registry(address);
-      connectedRole = info.active ? Number(info.role) : 0;
-    } catch (_) { connectedRole = 0; }
-    updateWalletUI();
-  } catch (e) {
-    alert("Wallet connection failed: " + (e.message || e));
-  } finally {
-    btn.textContent = "Connect Wallet"; btn.disabled = false;
-  }
-}
-
-function updateWalletUI() {
-  const addrEl = document.getElementById("wallet-addr");
-  const roleEl = document.getElementById("wallet-role");
-  // Admin action buttons — only REGISTRAR (role 3) may perform them
-  const isRegistrar = connectedRole === 3;
-  ["btn-register","btn-revoke","btn-setlevel","btn-setdecl"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !isRegistrar;
+  // Shared header + guard: only a REGISTRAR wallet may use this page.
+  NyayaWallet.mountHeader({
+    container: "#session-header",
+    allowedRoles: ["REGISTRAR"],
+    onSession: adoptSession
   });
-
-  if (!connectedAddress) {
-    addrEl.textContent = "Not connected";
-    roleEl.textContent = "—";
-    roleEl.className = "wallet-role role-none";
-    return;
-  }
-
-  const short = connectedAddress.slice(0, 6) + "..." + connectedAddress.slice(-4);
-  addrEl.textContent = short;
-  if (connectedRole === 3) {
-    roleEl.textContent = "REGISTRAR";
-    roleEl.className = "wallet-role role-registrar";
-  } else if (connectedRole === 0) {
-    roleEl.textContent = "No role registered";
-    roleEl.className = "wallet-role role-none";
-  } else {
-    roleEl.textContent = ROLE_NAMES[connectedRole] || "UNKNOWN";
-    roleEl.className = "wallet-role";
-  }
 }
 
-async function loadJudges() {
+// Called by the shared header whenever the (allowed) session is set or changes.
+async function adoptSession(session) {
+  connectedAddress = session.address;
+  connectedRole = 3; // the guard only lets REGISTRAR through
+  connectedSigner = await new ethers.BrowserProvider(window.ethereum).getSigner();
+  ["btn-register", "btn-revoke", "btn-setlevel", "btn-setdecl"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
+}
+
+// The registry has no list function, so signer addresses come from JudgeRegistered events.
+// Each address is then read from the registry for its current state (a later revoke or
+// re-registration shows up correctly because registry() is the source of truth).
+async function loadSigners() {
   const listEl = document.getElementById("judges-list");
-  const judgeAddresses = [config.judgeAddress, config.outsideJudgeAddress].filter(Boolean);
-  if (!judgeAddresses.length) {
-    listEl.innerHTML = '<p style="font-size:13px;color:#94A3B8;">No judge addresses in config.</p>';
-    return;
-  }
-  listEl.innerHTML = "";
-  for (const addr of judgeAddresses) {
-    try {
-      const info  = await contract.registry(addr);
-      const terrName = info.active ? await contract.territoryName(info.territoryCode) : "—";
-      const nonce = await contract.judgeNonce(addr);
-      const div   = document.createElement("div");
-      div.className = "judge-row";
-      div.innerHTML =
-        '<div class="judge-row-left">' +
-          '<span class="judge-name">' + info.courtName + '</span>' +
-          '<span class="judge-meta">' + addr.slice(0,12) + '...' + addr.slice(-6) +
-          ' &nbsp;&middot;&nbsp; ' + (COURT_LEVELS[info.courtLevel] || 'Unknown') +
-          ' &nbsp;&middot;&nbsp; ' + (ROLE_NAMES[info.role] || 'UNKNOWN') +
-          ' &nbsp;&middot;&nbsp; ' + terrName +
-          ' &nbsp;&middot;&nbsp; Nonce: ' + nonce.toString() + '</span>' +
-        '</div>' +
-        '<span class="judge-badge ' + (info.active ? 'active' : 'revoked') + '">' +
-          (info.active ? 'ACTIVE' : 'REVOKED') + '</span>';
-      listEl.appendChild(div);
-    } catch (_) {
-      const div = document.createElement("div");
-      div.className = "judge-row";
-      div.innerHTML =
-        '<div class="judge-row-left">' +
-          '<span class="judge-name" style="color:#94A3B8">' + addr.slice(0,12) + '...' + addr.slice(-6) + '</span>' +
-          '<span class="judge-meta">Not registered</span>' +
-        '</div>' +
-        '<span class="judge-badge revoked">NONE</span>';
-      listEl.appendChild(div);
+  try {
+    const logs = await contract.queryFilter(contract.filters.JudgeRegistered(), 0, "latest");
+    const addresses = [...new Set(logs.map(l => ethers.getAddress(l.args.signer)))];
+    if (!addresses.length) {
+      listEl.innerHTML = '<p style="font-size:13px;color:#94A3B8;">No signers registered yet.</p>';
+      return;
     }
+    const rows = [];
+    for (const addr of addresses) {
+      const info = await contract.registry(addr);
+      const terrName = info.active ? await contract.territoryName(info.territoryCode) : "—";
+      const nonce = Number(info.role) === 1 ? await contract.judgeNonce(addr) : null;
+      rows.push({ addr, info, terrName, nonce });
+    }
+    rows.sort((a, b) => Number(a.info.role) - Number(b.info.role));
+
+    listEl.replaceChildren();
+    for (const { addr, info, terrName, nonce } of rows) {
+      const row = document.createElement("div");
+      row.className = "judge-row";
+
+      const left = document.createElement("div");
+      left.className = "judge-row-left";
+      const name = document.createElement("span");
+      name.className = "judge-name";
+      name.textContent = info.courtName;
+      const meta = document.createElement("span");
+      meta.className = "judge-meta";
+      meta.textContent = [
+        addr.slice(0, 12) + "..." + addr.slice(-6),
+        ROLE_NAMES[Number(info.role)] || "UNKNOWN",
+        COURT_LEVELS[Number(info.courtLevel)] || "Unknown level",
+        terrName
+      ].concat(nonce === null ? [] : ["Nonce: " + nonce.toString()]).join("  ·  ");
+      left.append(name, meta);
+
+      const badge = document.createElement("span");
+      badge.className = "judge-badge " + (info.active ? "active" : "revoked");
+      badge.textContent = info.active ? "ACTIVE" : "REVOKED";
+
+      row.append(left, badge);
+      listEl.appendChild(row);
+    }
+  } catch (e) {
+    console.error(e);
+    listEl.innerHTML = '<p style="font-size:13px;color:#94A3B8;">Could not load signers from the chain.</p>';
   }
 }
+
+// Parcels come from PropertyRegistered events; label and value are read live from the registry.
+async function loadParcels() {
+  const sel = document.getElementById("pec-tokenid");
+  try {
+    const logs = await contract.queryFilter(contract.filters.PropertyRegistered(), 0, "latest");
+    const ids = [...new Set(logs.map(l => l.args.tokenId.toString()))].sort((a, b) => Number(a) - Number(b));
+    if (!ids.length) { sel.innerHTML = '<option value="">No parcels registered</option>'; return; }
+    sel.replaceChildren();
+    for (const id of ids) {
+      const terr = await contract.territoryName(await contract.propertyTerritory(id));
+      const value = await contract.parcelDeclaredValue(id);
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = "Token " + id + " — " + terr + " (declared " + inr(value) + ")";
+      sel.appendChild(opt);
+    }
+    showSelectedDeclaredValue();
+  } catch (e) {
+    console.error(e);
+    sel.innerHTML = '<option value="">Could not load parcels</option>';
+  }
+}
+
+// Pre-fills the declared-value box with what the chain currently holds for the chosen token.
+async function showSelectedDeclaredValue() {
+  const id = document.getElementById("pec-tokenid").value;
+  const box = document.getElementById("pec-declval");
+  if (!id) return;
+  try { box.placeholder = "currently " + inr(await contract.parcelDeclaredValue(id)); } catch (_) {}
+}
+document.getElementById("pec-tokenid").addEventListener("change", showSelectedDeclaredValue);
 
 async function loadLevelMaxValues() {
   const listEl = document.getElementById("level-maxval-list");
@@ -581,7 +588,7 @@ async function loadLevelMaxValues() {
 }
 
 async function setCourtLevelMax() {
-  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  if (!connectedSigner) { alert("Sign in with a REGISTRAR wallet first."); return; }
   const btn = document.getElementById("btn-setlevel");
   btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
@@ -602,7 +609,7 @@ async function setCourtLevelMax() {
 }
 
 async function setDeclaredValue() {
-  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  if (!connectedSigner) { alert("Sign in with a REGISTRAR wallet first."); return; }
   const btn = document.getElementById("btn-setdecl");
   btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
@@ -610,8 +617,9 @@ async function setDeclaredValue() {
     const val     = document.getElementById("pec-declval").value.trim();
     const tx = await contract.connect(connectedSigner).setParcelDeclaredValue(tokenId, val);
     const receipt = await tx.wait();
+    loadParcels();
     showPecResult("success", "Declared Value Set",
-      "<strong>Token #" + tokenId + ":</strong> ₹" + Number(val).toLocaleString("en-IN") +
+      "<strong>Token #" + esc(tokenId) + ":</strong> ₹" + Number(val).toLocaleString("en-IN") +
       '<span class="tx-hash">Tx: ' + receipt.hash + '</span>');
   } catch (e) {
     showPecResult("fail", "Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
@@ -630,7 +638,7 @@ function showPecResult(type, title, bodyHtml) {
 }
 
 async function registerJudge() {
-  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  if (!connectedSigner) { alert("Sign in with a REGISTRAR wallet first."); return; }
   const btn = document.getElementById("btn-register");
   btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
@@ -645,35 +653,35 @@ async function registerJudge() {
     const tx = await contract.connect(connectedSigner).registerJudge(addr, court, from, until, level, terrCode, role);
     const receipt = await tx.wait();
     showRegResult("success", "Signer Registered",
-      "<strong>Address:</strong> " + addr + "<br>" +
-      "<strong>Court:</strong> " + court + "<br>" +
+      "<strong>Address:</strong> " + esc(addr) + "<br>" +
+      "<strong>Court:</strong> " + esc(court) + "<br>" +
       "<strong>Level:</strong> " + (COURT_LEVELS[level] || level) + "<br>" +
       "<strong>Role:</strong> " + (ROLE_NAMES[role] || role) + "<br>" +
       "<strong>Territory:</strong> " + terrKey +
       '<span class="tx-hash">Tx: ' + receipt.hash + '</span>');
-    loadJudges();
+    loadSigners();
   } catch (e) {
     showRegResult("fail", "Registration Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
   } finally {
-    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Register Judge";
+    btn.className = "btn btn-primary"; btn.disabled = false; btn.textContent = "Register Signer";
   }
 }
 
 async function revokeJudge() {
-  if (!connectedSigner) { alert("Connect a REGISTRAR wallet first."); return; }
+  if (!connectedSigner) { alert("Sign in with a REGISTRAR wallet first."); return; }
   const btn = document.getElementById("btn-revoke");
   btn.className = "btn btn-waiting"; btn.disabled = true; btn.textContent = "Waiting for block...";
   try {
     const addr = document.getElementById("reg-address").value.trim();
     const tx = await contract.connect(connectedSigner).revokeJudge(addr);
     await tx.wait();
-    showRegResult("success", "Judge Revoked",
-      "<strong>Address:</strong> " + addr + "<br>Authorization has been revoked.");
-    loadJudges();
+    showRegResult("success", "Signer Revoked",
+      "<strong>Address:</strong> " + esc(addr) + "<br>Authorization has been revoked.");
+    loadSigners();
   } catch (e) {
     showRegResult("fail", "Revocation Failed", "<strong>Reason:</strong> " + (e.reason || e.message));
   } finally {
-    btn.className = "btn btn-danger"; btn.disabled = false; btn.textContent = "Revoke Judge";
+    btn.className = "btn btn-danger"; btn.disabled = false; btn.textContent = "Revoke Signer";
   }
 }
 
