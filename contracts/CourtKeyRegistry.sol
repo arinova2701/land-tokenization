@@ -34,6 +34,10 @@ contract CourtKeyRegistry {
     uint8 public constant ROLE_CLERK     = 2;
     uint8 public constant ROLE_REGISTRAR = 3;
 
+    // ── Action identifiers (encoded in order digest — Sprint 0c security fix) ──
+    uint8 public constant FREEZE   = 0;
+    uint8 public constant UNFREEZE = 1;
+
     // ── Check bitmask constants ────────────────────────────────────────────────
     uint256 public constant CHECK_EXPIRY          = 1 << 0;   // order not expired
     uint256 public constant CHECK_REPLAY          = 1 << 1;   // not a replay
@@ -339,12 +343,44 @@ contract CourtKeyRegistry {
         return parcelToken.isFrozen(_propertyAddress(tokenId));
     }
 
+    // ── Order digest (Sprint 0c security fix) ────────────────────────────────
+
+    /**
+     * @notice  Compute the canonical order digest.
+     *          Every signature is verified against this digest, so it is
+     *          impossible to reuse a valid bundle for different parameters
+     *          (different action, tokenId, caseNumber, expiry, nonce, chainId,
+     *          or contract address).
+     *
+     * @param action        FREEZE (0) or UNFREEZE (1).
+     * @param tokenId       Property token identifier.
+     * @param caseNumber    Court case number string.
+     * @param orderExpiry   Unix timestamp after which the order is invalid.
+     * @param nonce         Per-judge sequential counter.
+     */
+    function computeOrderDigest(
+        uint8           action,
+        uint256         tokenId,
+        string calldata caseNumber,
+        uint256         orderExpiry,
+        uint256         nonce
+    ) public view returns (bytes32) {
+        return keccak256(abi.encode(
+            block.chainid,
+            address(this),
+            action,
+            tokenId,
+            keccak256(bytes(caseNumber)),
+            orderExpiry,
+            nonce
+        ));
+    }
+
     // ── Core freeze ───────────────────────────────────────────────────────────
 
     function submitFreezeOrder(
         uint256          tokenId,
         string calldata  caseNumber,
-        bytes32          orderHash,
         uint256          orderExpiry,
         uint256          nonce,
         bytes[] calldata signatures
@@ -355,8 +391,12 @@ contract CourtKeyRegistry {
         require(block.timestamp <= orderExpiry, "Order has expired");
         bitmask |= CHECK_EXPIRY;
 
+        // Compute digest internally (Sprint 0c security fix — binds to chainId,
+        // contract address, action, and all order fields).
+        bytes32 digest = computeOrderDigest(FREEZE, tokenId, caseNumber, orderExpiry, nonce);
+
         // Check 2: replay protection (secondary — nonce is primary)
-        require(!usedOrders[orderHash], "Order already submitted");
+        require(!usedOrders[digest], "Order already submitted");
         bitmask |= CHECK_REPLAY;
 
         // Checks 3–12: multi-signer quorum
@@ -364,7 +404,7 @@ contract CourtKeyRegistry {
         address[] memory signerAddrs;
         uint8[]   memory signerRoles;
         (judgeAddress, bitmask, signerAddrs, signerRoles) =
-            _validateSignatures(orderHash, tokenId, signatures, bitmask);
+            _validateSignatures(digest, tokenId, signatures, bitmask);
 
         // Check 10 (bit 9): per-judge nonce sequencing (primary replay/ordering protection)
         require(nonce == judgeNonce[judgeAddress], "Invalid nonce");
@@ -378,7 +418,7 @@ contract CourtKeyRegistry {
         bitmask |= CHECK_PECUNIARY;
 
         // Commit state
-        usedOrders[orderHash] = true;
+        usedOrders[digest] = true;
         judgeNonce[judgeAddress]++;
         frozenBy[tokenId] = caseNumber;
 
@@ -407,7 +447,6 @@ contract CourtKeyRegistry {
     function submitUnfreezeOrder(
         uint256          tokenId,
         string calldata  caseNumber,
-        bytes32          orderHash,
         uint256          orderExpiry,
         uint256          nonce,
         bytes[] calldata signatures
@@ -418,8 +457,11 @@ contract CourtKeyRegistry {
         require(block.timestamp <= orderExpiry, "Order has expired");
         bitmask |= CHECK_EXPIRY;
 
+        // Compute digest internally (Sprint 0c security fix)
+        bytes32 digest = computeOrderDigest(UNFREEZE, tokenId, caseNumber, orderExpiry, nonce);
+
         // Check 2: replay protection (secondary — nonce is primary)
-        require(!usedOrders[orderHash], "Order already submitted");
+        require(!usedOrders[digest], "Order already submitted");
         bitmask |= CHECK_REPLAY;
 
         // Checks 3–12: multi-signer quorum
@@ -427,7 +469,7 @@ contract CourtKeyRegistry {
         address[] memory signerAddrs;
         uint8[]   memory signerRoles;
         (judgeAddress, bitmask, signerAddrs, signerRoles) =
-            _validateSignatures(orderHash, tokenId, signatures, bitmask);
+            _validateSignatures(digest, tokenId, signatures, bitmask);
 
         // Check 10 (bit 9): per-judge nonce sequencing
         require(nonce == judgeNonce[judgeAddress], "Invalid nonce");
@@ -444,7 +486,7 @@ contract CourtKeyRegistry {
         require(frozen(tokenId), "Token is not frozen");
         bitmask |= CHECK_FROZEN_STATE;
 
-        usedOrders[orderHash] = true;
+        usedOrders[digest] = true;
         judgeNonce[judgeAddress]++;
         frozenBy[tokenId] = "";
 
@@ -478,8 +520,9 @@ contract CourtKeyRegistry {
      *          and reads the stored bitmask from history AFTER acceptance.
      */
     function getOrderChecks(
+        uint8            action,
         uint256          tokenId,
-        bytes32          orderHash,
+        string calldata  caseNumber,
         uint256          orderExpiry,
         uint256          nonce,
         bytes[] calldata signatures
@@ -490,14 +533,17 @@ contract CourtKeyRegistry {
         if (block.timestamp > orderExpiry) return bitmask;
         bitmask |= CHECK_EXPIRY;
 
+        // Compute digest
+        bytes32 digest = computeOrderDigest(action, tokenId, caseNumber, orderExpiry, nonce);
+
         // Replay
-        if (usedOrders[orderHash]) return bitmask;
+        if (usedOrders[digest]) return bitmask;
         bitmask |= CHECK_REPLAY;
 
         // Threshold
         if (signatures.length < quorumThreshold) return bitmask;
 
-        bytes32 ethHash = orderHash.toEthSignedMessageHash();
+        bytes32 ethHash = digest.toEthSignedMessageHash();
 
         address[] memory seen = new address[](signatures.length);
         uint256 seenCount      = 0;
@@ -580,6 +626,12 @@ contract CourtKeyRegistry {
 
         if (parcelDeclaredValue[tokenId] > courtLevelMaxValue[registry[judgeAddress].courtLevel]) return bitmask;
         bitmask |= CHECK_PECUNIARY;
+
+        // FROZEN_STATE — unfreeze only: token must currently be frozen (Sprint 0c)
+        if (action == UNFREEZE) {
+            if (!frozen(tokenId)) return bitmask;
+            bitmask |= CHECK_FROZEN_STATE;
+        }
     }
 
     // ── History query ─────────────────────────────────────────────────────────
