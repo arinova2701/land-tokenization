@@ -61,8 +61,8 @@
 - `test/negative-corpus.js`: 37 test cases (30 Sprint 0b + 7 Sprint 0c order-binding).
   - Cases 31–36: valid bundle reused with different tokenId, expiry, action, nonce, caseNumber, or contract — all revert with "Unregistered or revoked signer".
   - Case 37: `NyayaDigest.compute` matches on-chain `computeOrderDigest` for 3 inputs.
-- All 37 pass on Hardhat.
-- Besu QBFT three-signer benchmark (100 tx) — run after Sprint 0b merge; results saved under `besu_three_signer` key.
+- Sprint 0c verification: 37/37 tests pass on Hardhat and 37/37 pass on the four-node Besu QBFT network. Demo preflight: 16 PASS, 0 FAIL.
+- Besu QBFT three-signer benchmark (100 freeze orders): average 1,994 ms, median 2,051 ms, p95 2,076 ms, p99 2,110 ms, min 1,535 ms, max 2,579 ms. Results saved under `besu_three_signer`.
 - Prior Besu results retained under `besu_multi_signer` and `besu_single_signer_legacy` keys in `data/benchmark-results.json`.
 - `docs/idf-b-alignment.md` added.
 - `docs/interfaces.md` added (Sprint 0a).
@@ -88,4 +88,4 @@
 |-----------------|----------|------------|---------------|
 | Hardhat (in-process) | 31337 | instant | 37/37 tests pass |
 | Hardhat localhost    | 31337 | instant | Deploy + benchmark verified |
-| Besu QBFT (docker)   | 1337  | ~2s     | Deployed; 37/37 tests pass; benchmark pending Sprint 0c re-run |
+| Besu QBFT (docker)   | 1337  | ~2s     | Sprint 0c: 37/37 tests pass; 100-order benchmark complete |
