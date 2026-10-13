@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Demo Console · NyayaChain</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<script src="inspector.js"></script>
+<link rel="stylesheet" href="inspector.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#17233b;font:16px/1.5 system-ui,sans-serif}
+header{background:#0b1736;color:white;padding:20px 28px}header a{color:#bfdbfe}
+main{max-width:1400px;margin:auto;padding:28px}.layout{display:grid;grid-template-columns:minmax(350px,1fr) minmax(420px,1.2fr);gap:24px}
+.panel{background:white;border:1px solid #dbe2ed;border-radius:12px;padding:22px}.panel h2{margin:0 0 10px}
+#scenarios{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+button{font:inherit;text-align:left;border:1px solid #b9c8df;border-radius:8px;background:#f8fbff;color:#183b74;padding:12px;cursor:pointer}
+button:hover,button:focus{border-color:#2563eb;background:#eff6ff}button:disabled{opacity:.5;cursor:wait}
+.scenario-title{display:block;font-weight:700}.scenario-token{display:block;color:#64748b;font-size:14px}
+.summary{padding:14px;border-radius:8px;background:#f1f5f9;margin:15px 0}
+.summary.pass{background:#dcfce7;color:#166534}.summary.fail{background:#fee2e2;color:#b91c1c}
+table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border-bottom:1px solid #e2e8f0;vertical-align:top}
+th{background:#f8fafc}.pass-text{color:#166534;font-weight:700}.fail-text{color:#b91c1c;font-weight:700}
+.scroll{overflow-x:auto}code{overflow-wrap:anywhere}.hint{color:#64748b}
+@media(max-width:950px){.layout{grid-template-columns:1fr}}
+</style></head><body>
+<header><a href="index.html">← Citizen portal</a><h1>NyayaChain Demo Console</h1></header>
+<main><p class="hint">One click runs each scenario against the local Besu chain. Signing happens only in the local demo runner; this page receives order signatures and public results, never private keys.</p>
+<div class="layout"><section class="panel"><h2>Scenarios</h2><p id="availability" role="status">Connecting to local demo runner…</p><div id="scenarios"></div>
+<div id="summary" class="summary">Choose a scenario to see expected and actual results.</div>
+<div class="scroll"><table><thead><tr><th>Step</th><th>Expected</th><th>Actual</th><th>Match</th></tr></thead><tbody id="steps"></tbody></table></div>
+</section><section class="panel"><h2>Order inspection</h2><p class="hint">The inspector reads contract checks, recovered signers, and jurisdiction directly from Besu.</p><div id="inspector-root"></div></section></div>
+</main>
+<script>
+(async function(){
+ const api="http://127.0.0.1:3001";
+ const availability=document.getElementById("availability"),list=document.getElementById("scenarios");
+ const summary=document.getElementById("summary"),steps=document.getElementById("steps");
+ const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+ let provider,config;
+ try{
+  config=await(await fetch("config.json")).json();
+  provider=new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+  await provider.getNetwork();
+  NyayaInspector.attach({container:document.getElementById("inspector-root"),provider,config});
+  const response=await fetch(api+"/demo/scenarios");
+  const data=await response.json();
+  if(!response.ok)throw Error(data.error||"Demo runner unavailable");
+  availability.textContent="Local demo mode ready";
+  for(const item of data.scenarios){
+   const button=document.createElement("button");
+   button.type="button";
+   button.innerHTML='<span class="scenario-title">'+safe(item.title)+'</span><span class="scenario-token">Token '+safe(item.tokenId)+' · Expected: '+safe(item.expected)+'</span>';
+   button.onclick=()=>run(item,button);
+   list.appendChild(button);
+  }
+ }catch(e){availability.textContent=e.message+" · Start with DEMO_MODE=1 node server/demo-runner.js";return}
+ async function run(item,button){
+  [...list.querySelectorAll("button")].forEach(b=>b.disabled=true);
+  summary.className="summary";summary.textContent="Running "+item.title+" on Besu…";steps.textContent="";
+  try{
+   const response=await fetch(api+"/demo/run/"+encodeURIComponent(item.id),{method:"POST"});
+   const result=await response.json();
+   if(!response.ok)throw Error(result.error||"Scenario failed");
+   summary.className="summary "+(result.passed?"pass":"fail");
+   summary.innerHTML="<strong>"+safe(result.title)+": "+(result.passed?"PASS":"FAIL")+"</strong><br>Expected: "+safe(result.expected)+"<br>Actual: "+safe(result.actual);
+   for(const row of result.steps){
+    const tr=document.createElement("tr");
+    tr.innerHTML="<td>"+safe(row.name)+"</td><td>"+safe(row.expected)+"</td><td>"+safe(row.actual)+"</td><td class='"+(row.passed?"pass-text":"fail-text")+"'>"+(row.passed?"✓":"✕")+"</td>";
+    steps.appendChild(tr);
+   }
+   if(result.context){
+    document.querySelector("#inspector-root details").open=true;
+    NyayaInspector.setOrder(result.context);
+   }
+  }catch(e){summary.className="summary fail";summary.textContent=e.message}
+  finally{[...list.querySelectorAll("button")].forEach(b=>b.disabled=false)}
+ }
+})();
+</script>
+</body></html>

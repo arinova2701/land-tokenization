@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Architecture · NyayaChain</title>
+<style>
+body{margin:0;background:#f3f6fb;color:#17233b;font:16px/1.5 system-ui,sans-serif}
+header{background:#0b1736;color:#fff;padding:20px max(22px,calc((100vw - 1100px)/2))}
+header a{color:#bfdbfe}main{max-width:1100px;margin:auto;padding:28px}
+.card{background:#fff;border:1px solid #d9e2ef;border-radius:12px;padding:24px;margin:20px 0}
+h1,h2{margin:.3rem 0 1rem}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;align-items:stretch}
+.node{background:#eef4ff;border:2px solid #93b5e8;border-radius:10px;padding:18px;min-width:0}
+.node.chain{background:#f0fdf4;border-color:#86cf9c}.node.mailbox{background:#fff7ed;border-color:#f0bb7d}
+.node h3{margin:0 0 6px}.node p{margin:0;color:#526178}.arrow{font-size:26px;text-align:center;color:#2563eb;margin:10px 0}
+.sequence{counter-reset:step;list-style:none;padding:0}.sequence li{counter-increment:step;padding:12px 14px 12px 52px;position:relative;border-left:2px solid #b8c7db;margin-left:16px}
+.sequence li:before{content:counter(step);position:absolute;left:-17px;top:10px;border-radius:50%;background:#2563eb;color:#fff;width:32px;height:32px;text-align:center;line-height:32px;font-weight:700}
+code{overflow-wrap:anywhere}.muted{color:#64748b}.address{font-family:ui-monospace,monospace;font-size:.85em}
+@media(max-width:800px){.flow{grid-template-columns:1fr}}
+</style></head><body>
+<header><a href="index.html">← Citizen portal</a><h1>NyayaChain architecture</h1></header>
+<main>
+<p class="muted">A signed court order moves through the browser and the Besu chain. The coordination service carries pending orders, but it is an untrusted off-chain mailbox: the browser and contract independently validate the signatures and the chain decides acceptance.</p>
+<section class="card"><h2>Actors and components</h2>
+<div class="flow">
+ <div class="node"><h3>People</h3><p>Judge · Clerk · Registrar sign orders. Citizen reads status and proof without a wallet.</p></div>
+ <div class="node"><h3>Browser + MetaMask</h3><p>Creates the ABI-encoded order digest, requests EIP-191 signatures, and sends the final transaction.</p></div>
+ <div class="node mailbox"><h3>Coordination service</h3><p>Untrusted off-chain mailbox for pending orders and collected signatures. It cannot approve or freeze property.</p></div>
+</div><div class="arrow">↓ signed order and transaction ↓</div>
+<div class="flow">
+ <div class="node chain"><h3>Besu QBFT network</h3><p>Four local validator nodes. Chain ID <span id="chain-id">…</span>; blocks provide transaction receipts and finality.</p></div>
+ <div class="node chain"><h3>CourtKeyRegistry</h3><p>Recovers signers, checks roles, key validity, territorial and value limits, quorum, expiry, replay and nonce. Stores order history and check bits.</p><p class="address" id="registry-address">Loading address…</p></div>
+ <div class="node chain"><h3>ParcelToken</h3><p>Accepts freeze and unfreeze calls only from its registered agent, CourtKeyRegistry.</p><p class="address" id="token-address">Loading address…</p></div>
+</div></section>
+<section class="card"><h2>Freeze sequence</h2><ol class="sequence">
+ <li>Judge selects a parcel, case number, expiry and current judge nonce. The browser computes <code>keccak256(abi.encode(tokenId, caseNumber, orderExpiry, nonce))</code>.</li>
+ <li>Judge, Clerk and Registrar sign the 32-byte digest using the EIP-191 personal-message prefix. Signatures can travel through the untrusted mailbox.</li>
+ <li>The browser previews checks with <code>getOrderChecks</code> and submits the order and signatures to CourtKeyRegistry.</li>
+ <li>The contract recovers each signer and checks the on-chain registry, quorum, jurisdiction, value, expiry, replay and nonce. It then calls ParcelToken as its agent.</li>
+ <li>Besu records the transaction, acceptance event and history entry. The citizen page and independent verifier read that on-chain proof.</li>
+</ol></section>
+</main>
+<script>
+(async()=>{try{
+ const c=await(await fetch("config.json")).json();
+ const rpc=await fetch("http://127.0.0.1:8545",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",method:"eth_chainId",params:[],id:1})});
+ const chain=await rpc.json();
+ document.getElementById("chain-id").textContent=chain.result?String(BigInt(chain.result)):"unavailable";
+ document.getElementById("registry-address").textContent=c.contractAddress;
+ document.getElementById("token-address").textContent=c.parcelTokenAddress;
+}catch(e){document.getElementById("chain-id").textContent="unavailable"}})();
+</script></body></html>
