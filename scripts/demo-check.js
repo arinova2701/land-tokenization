@@ -19,6 +19,7 @@ const EXPECTED_CHAIN = 1337;
 
 const ABI = [
   "function admin() view returns (address)",
+  "function isAdmin(address) view returns (bool)",
   "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
   "function propertyTerritory(uint256) view returns (bytes32)",
   "function quorumThreshold() view returns (uint256)"
@@ -89,8 +90,8 @@ async function main() {
     result("Blocks advancing", false, e.message);
   }
 
-  // Check 3: All four demo wallets have a balance
-  const roles = ["registrar", "judge", "clerk", "citizen"];
+  // Check 3: The four user wallets and separate Registry Admin have a balance
+  const roles = ["admin", "registrar", "judge", "clerk", "citizen"];
   for (const role of roles) {
     try {
       const bal = await provider.getBalance(wallets[role].address);
@@ -119,6 +120,19 @@ async function main() {
 
   const contract = new ethers.Contract(config.contractAddress, ABI, provider);
   const ptContract = new ethers.Contract(config.parcelTokenAddress, PARCEL_TOKEN_ABI, provider);
+
+  // Registry Admin manages keys and values but cannot be an order signer.
+  try {
+    const [onChainAdmin, isAdmin, key] = await Promise.all([
+      contract.admin(), contract.isAdmin(wallets.admin.address), contract.registry(wallets.admin.address)
+    ]);
+    result("Demo Registry Admin is separate from order signers",
+      isAdmin && onChainAdmin.toLowerCase() === wallets.admin.address.toLowerCase() &&
+      !key.active && Number(key.role) === 0,
+      wallets.admin.address + " — isAdmin=" + isAdmin + " signerRole=" + key.role);
+  } catch (e) {
+    result("Demo Registry Admin", false, e.message);
+  }
 
   // Check 6: ParcelToken agent is CourtKeyRegistry
   try {

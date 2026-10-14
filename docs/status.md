@@ -57,11 +57,18 @@
 - **`public/order-digest.js`:** New shared helper (`NyayaDigest.compute`) for browser and Node.js. court.html, inspector.js, verify.html, scripts/scenarios.js all updated to use it.
 - **`public/config.json`** added to `.gitignore` (written by deploy-besu.js, not committed).
 
+### Registry Admin and separation of duties
+
+- Registry management uses the `admin` address, independent of `ROLE_JUDGE`, `ROLE_CLERK`, and `ROLE_REGISTRAR`. The Registry Admin does not sign orders or count toward the three-signer quorum.
+- `proposeAdmin(newAdmin)` and `acceptAdmin()` provide a two-step handover. Only the current admin may propose; only the pending address may accept. `AdminTransferred(oldAdmin, newAdmin)` records completion, and `isAdmin(address)` supports portal access checks.
+- A registered signer, including a revoked signer, cannot be proposed as admin. The current or pending admin cannot be registered as a signer.
+- The demo uses a separate funded admin wallet. `seed-demo.js` transfers admin rights from the deployer after registering demo signers and parcels; `registrar.html` permits writes only when `isAdmin(connectedAddress)` is true.
+
 ### Step 5 — Tests, benchmarks, docs
-- `test/negative-corpus.js`: 37 test cases (30 Sprint 0b + 7 Sprint 0c order-binding).
+- `test/negative-corpus.js`: 43 test cases (37 existing cases + 6 Registry Admin cases).
   - Cases 31–36: valid bundle reused with different tokenId, expiry, action, nonce, caseNumber, or contract — all revert with "Unregistered or revoked signer".
   - Case 37: `NyayaDigest.compute` matches on-chain `computeOrderDigest` for 3 inputs.
-- Sprint 0c verification: 37/37 tests pass on Hardhat and 37/37 pass on the four-node Besu QBFT network. Demo preflight: 16 PASS, 0 FAIL.
+- Registry Admin verification: 43/43 tests pass on Hardhat and 43/43 pass on the four-node Besu QBFT network. The earlier Sprint 0c demo preflight was 16 PASS, 0 FAIL; the new admin preflight is run after redeploy and reseed.
 - Besu QBFT three-signer benchmark (100 freeze orders): average 1,994 ms, median 2,051 ms, p95 2,076 ms, p99 2,110 ms, min 1,535 ms, max 2,579 ms. Results saved under `besu_three_signer`.
 - Prior Besu results retained under `besu_multi_signer` and `besu_single_signer_legacy` keys in `data/benchmark-results.json`.
 - `docs/idf-b-alignment.md` added.
@@ -86,6 +93,6 @@
 ## Networks
 | Network         | Chain ID | Block time | Status        |
 |-----------------|----------|------------|---------------|
-| Hardhat (in-process) | 31337 | instant | 37/37 tests pass |
+| Hardhat (in-process) | 31337 | instant | 43/43 tests pass |
 | Hardhat localhost    | 31337 | instant | Deploy + benchmark verified |
-| Besu QBFT (docker)   | 1337  | ~2s     | Sprint 0c: 37/37 tests pass; 100-order benchmark complete |
+| Besu QBFT (docker)   | 1337  | ~2s     | Registry Admin: 43/43 tests pass; Sprint 0c 100-order benchmark retained |
