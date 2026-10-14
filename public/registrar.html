@@ -253,6 +253,7 @@ footer {
 
   <!-- Shared session header (role badge, address, sign out) — rendered by NyayaWallet.mountHeader -->
   <div id="session-header"></div>
+  <div id="admin-note"></div>
 
   <!-- Register Card -->
   <div class="card">
@@ -477,10 +478,26 @@ async function adoptSession(session) {
   connectedAddress = session.address;
   connectedRole = 3; // the guard only lets REGISTRAR through
   connectedSigner = await new ethers.BrowserProvider(window.ethereum).getSigner();
+
+  // Registry settings are onlyAdmin on-chain, and the admin is the deploy account, which is not
+  // necessarily the wallet holding the REGISTRAR role. Say so instead of letting the call fail.
+  let isAdmin = false, adminAddr = "";
+  try {
+    adminAddr = await contract.admin();
+    isAdmin = adminAddr.toLowerCase() === session.address.toLowerCase();
+  } catch (_) { isAdmin = true; /* cannot tell: let the contract decide */ }
+
   ["btn-register", "btn-revoke", "btn-setlevel", "btn-setdecl"].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = false;
+    if (el) el.disabled = !isAdmin;
   });
+  const note = document.getElementById("admin-note");
+  if (isAdmin) { note.replaceChildren(); return; }
+  const div = document.createElement("div");
+  div.style.cssText = "background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;padding:12px 16px;font-size:16px;line-height:1.5;margin-bottom:16px;";
+  div.textContent = "You are signed in as a Registrar, which lets you co-sign orders. Changing the registry (registering or revoking signers, limits and declared values) is restricted to the contract admin account " +
+    (adminAddr ? adminAddr.slice(0, 6) + "…" + adminAddr.slice(-4) : "") + ". The lists below are read-only for this wallet.";
+  note.replaceChildren(div);
 }
 
 // The registry has no list function, so signer addresses come from JudgeRegistered events.
@@ -489,7 +506,7 @@ async function adoptSession(session) {
 async function loadSigners() {
   const listEl = document.getElementById("judges-list");
   try {
-    const logs = await contract.queryFilter(contract.filters.JudgeRegistered(), 0, "latest");
+    const logs = await NyayaWallet.queryLogs(contract, contract.filters.JudgeRegistered());
     const addresses = [...new Set(logs.map(l => ethers.getAddress(l.args.signer)))];
     if (!addresses.length) {
       listEl.innerHTML = '<p style="font-size:13px;color:#94A3B8;">No signers registered yet.</p>';
@@ -541,7 +558,7 @@ async function loadSigners() {
 async function loadParcels() {
   const sel = document.getElementById("pec-tokenid");
   try {
-    const logs = await contract.queryFilter(contract.filters.PropertyRegistered(), 0, "latest");
+    const logs = await NyayaWallet.queryLogs(contract, contract.filters.PropertyRegistered());
     const ids = [...new Set(logs.map(l => l.args.tokenId.toString()))].sort((a, b) => Number(a) - Number(b));
     if (!ids.length) { sel.innerHTML = '<option value="">No parcels registered</option>'; return; }
     sel.replaceChildren();

@@ -68,9 +68,17 @@ function prune() {
 class BadRequest extends Error {}
 const bad = (m) => { throw new BadRequest(m); };
 
+// Same digest the contract computes (Sprint 0c): bound to chain id, contract address and action.
+// The contract address is re-read from public/config.json on each order, so a redeploy needs no restart.
+const { NyayaDigest } = require("../public/order-digest.js");
+const CONFIG_FILE = path.join(__dirname, "..", "public", "config.json");
+const CHAIN_ID = Number(process.env.CHAIN_ID) || 1337;
+
 function digest(o) {
-  return ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
-    ["uint256", "string", "uint256", "uint256"], [o.tokenId, o.caseNumber, o.orderExpiry, o.nonce]));
+  let contractAddress;
+  try { contractAddress = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")).contractAddress; }
+  catch (_) { bad("Server cannot read public/config.json, so it cannot check the order hash."); }
+  return NyayaDigest.compute(o.action, o.tokenId, o.caseNumber, o.orderExpiry, o.nonce, CHAIN_ID, contractAddress);
 }
 
 function statusOf(o) {

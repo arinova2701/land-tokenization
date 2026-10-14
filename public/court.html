@@ -653,7 +653,7 @@ async function adoptSession(session) {
 // Parcels come from PropertyRegistered events; territory, value and frozen state are read live.
 async function loadTokens() {
   const sel = $("court-tokenid");
-  const logs = await contract.queryFilter(contract.filters.PropertyRegistered(), 0, "latest");
+  const logs = await NyayaWallet.queryLogs(contract, contract.filters.PropertyRegistered());
   const ids = [...new Set(logs.map(l => Number(l.args.tokenId)))].sort((a, b) => a - b);
   tokens = [];
   for (const id of ids) {
@@ -900,7 +900,7 @@ async function validateImport(parsed) {
   if (!Array.isArray(parsed.signatures) || parsed.signatures.length < 1 || parsed.signatures.length > ROLES.length) fail("Order must carry 1 to 3 signatures.");
 
   // 1. The hash must be the digest of the fields.
-  const fields = { tokenId: parsed.tokenId, caseNumber: parsed.caseNumber, orderExpiry: parsed.orderExpiry, nonce: parsed.nonce };
+  const fields = { action: parsed.action, tokenId: parsed.tokenId, caseNumber: parsed.caseNumber, orderExpiry: parsed.orderExpiry, nonce: parsed.nonce };
   if (hashOf(fields).toLowerCase() !== parsed.orderHash.toLowerCase()) fail("Order hash does not match the order fields. Import rejected.");
 
   if (!tokenInfo(parsed.tokenId)) fail("Token " + parsed.tokenId + " is not registered on this chain.");

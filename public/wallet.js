@@ -197,6 +197,29 @@
     return signer.signMessage(ethers.getBytes(orderHash));
   }
 
+  // ── Event logs ──────────────────────────────────────────────────────────────
+  // Besu rejects eth_getLogs over a large block range (-32005; the default limit is 5000 blocks), so a
+  // single query from block 0 breaks on any long-running chain. Read the whole history in small windows.
+  // (Do not try to find the deploy block with eth_getCode: Besu only keeps full state for the most recent
+  // blocks, so old blocks look as if the contract did not exist yet.)
+  const LOG_WINDOW = 2000;
+  const LOG_PARALLEL = 4;
+
+  /** All logs matching `filter` from block 0 to now, read in windows the node accepts. */
+  async function queryLogs(contract, filter) {
+    const provider = contract.runner.provider;
+    const latest = await provider.getBlockNumber();
+    const windows = [];
+    for (let start = 0; start <= latest; start += LOG_WINDOW) windows.push([start, Math.min(start + LOG_WINDOW - 1, latest)]);
+    const out = [];
+    for (let i = 0; i < windows.length; i += LOG_PARALLEL) {
+      const batch = await Promise.all(windows.slice(i, i + LOG_PARALLEL).map(([a, b]) => contract.queryFilter(filter, a, b)));
+      for (const logs of batch) out.push(...logs);
+    }
+    return out;
+  }
+
+
   // Keep the session in sync with MetaMask. A chain change re-detects the role
   // (no page reload) so pages can show a wrong-network message instead of breaking.
   if (hasMetaMask()) {
@@ -322,6 +345,7 @@
     getSession,
     homeFor,
     mountHeader,
+    queryLogs,
     shortAddress,
     ready,
   };
