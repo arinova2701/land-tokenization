@@ -2,6 +2,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Chain Explorer · NyayaChain</title>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
+<script src="wallet.js"></script>
 <style>
 body{margin:0;background:#f4f7fb;color:#14223a;font:15px/1.5 system-ui,sans-serif}
 header{background:#0b1736;color:white;padding:20px max(22px,calc((100vw - 1200px)/2))}
@@ -62,7 +63,15 @@ button{background:#2563eb;color:#fff;border:0;border-radius:7px;padding:9px 15px
    document.getElementById("addresses").innerHTML=`CourtKeyRegistry <code>${safe(config.contractAddress)}</code><br>ParcelToken <code>${safe(config.parcelTokenAddress)}</code>`;
    const blocks=await Promise.all(Array.from({length:Math.min(10,latest+1)},(_,i)=>provider.getBlock(latest-i,true)));
    document.getElementById("blocks").innerHTML=blocks.map(b=>`<tr><td>#${b.number}</td><td>${safe(new Date(b.timestamp*1000).toLocaleString("en-IN"))}</td><td>${b.transactions.length}</td></tr>`).join("");
-   const recent=await provider.getLogs({address:config.contractAddress,fromBlock:Math.max(0,latest-300),toBlock:latest});
+   const [orderAccepted,orderVacated,all,propertyLogs]=await Promise.all([
+    NyayaWallet.queryLogs(contract,contract.filters.OrderAccepted()),
+    NyayaWallet.queryLogs(contract,contract.filters.OrderVacated()),
+    NyayaWallet.queryLogs(contract,contract.filters.JudgeRegistered()),
+    NyayaWallet.queryLogs(contract,contract.filters.PropertyRegistered())
+   ]);
+   const recent=[...orderAccepted,...orderVacated,...all,...propertyLogs]
+    .filter(log=>log.blockNumber>=Math.max(0,latest-300))
+    .sort((a,b)=>a.blockNumber-b.blockNumber||a.index-b.index);
    const eventTransactions=await Promise.all([...new Set(recent.map(log=>log.transactionHash))].slice(-25).reverse().map(async hash=>{
     const tx=await provider.getTransaction(hash);
     return {tx,block:tx.blockNumber};
@@ -87,14 +96,12 @@ button{background:#2563eb;color:#fff;border:0;border-radius:7px;padding:9px 15px
     else return "";
     return `<div class="event"><span class="pill">#${log.blockNumber}</span> ${safe(message)}</div>`;
    }).join("")||"No recent contract events";
-   const all=await provider.getLogs({address:config.contractAddress,fromBlock:0,toBlock:latest,topics:[iface.getEvent("JudgeRegistered").topicHash]});
    const addresses=[...new Set(all.map(log=>iface.parseLog(log).args.signer.toLowerCase()))];
    document.getElementById("signers").innerHTML=(await Promise.all(addresses.map(async a=>{
     const [key,nonce]=await Promise.all([contract.registry(a),contract.judgeNonce(a)]);
     return `<tr><td><code title="${safe(a)}">${safe(short(a))}</code></td><td>${safe(role[Number(key.role)]||"Unknown")} · ${safe(key.courtName)} · ${safe(level[Number(key.courtLevel)]||"Unknown")}</td><td>${key.active?"Yes":"No"}</td><td>${Number(key.role)===1?nonce:"—"}</td></tr>`;
    }))).join("")||'<tr><td colspan="4">No signer events</td></tr>';
    document.getElementById("limits").innerHTML=(await Promise.all([1,2,3,4].map(async n=>`${level[n]}: ${money(await contract.courtLevelMaxValue(n))}`))).map(s=>safe(s)).join("<br>");
-   const propertyLogs=await provider.getLogs({address:config.contractAddress,fromBlock:0,toBlock:latest,topics:[iface.getEvent("PropertyRegistered").topicHash]});
    const tokenIds=[...new Set(propertyLogs.map(log=>iface.parseLog(log).args.tokenId.toString()))].sort((a,b)=>Number(a)-Number(b));
    document.getElementById("parcels").innerHTML=(await Promise.all(tokenIds.map(async id=>{
     const [code,value,frozen]=await Promise.all([contract.propertyTerritory(id),contract.parcelDeclaredValue(id),contract.frozen(id)]);
