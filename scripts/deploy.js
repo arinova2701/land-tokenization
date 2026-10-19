@@ -17,7 +17,7 @@ async function main() {
   const address = await contract.getAddress();
 
   console.log("CourtKeyRegistry deployed at:", address);
-  console.log("Admin (Registrar):", admin.address);
+  console.log("Admin (deploy-only):", admin.address);
   console.log("Judge (TN):", judge.address);
   console.log("Judge (outside TN):", outsideJudge.address);
 
@@ -73,26 +73,15 @@ async function main() {
   )).wait();
   console.log("Judge 2 registered: Civil Judge Kadapa (ROLE_JUDGE)");
 
-  // Admin: Land Registry Authority — ROLE_REGISTRAR (3), national co-signer
-  // REGISTRAR is exempt from territorial jurisdiction — can co-sign any order.
-  await (await contract.registerJudge(
-    admin.address,
-    "Land Registry Authority",
-    0, oneYear,
-    4,        // High Court level for registrar
-    tamilNadu,
-    3         // ROLE_REGISTRAR
-  )).wait();
-  console.log("Admin registered as ROLE_REGISTRAR (national co-signer authority)");
-
   // Write config for frontend
+  // NOTE: ROLE_REGISTRAR is NOT registered here. seed-demo.js registers the
+  // demo registrar wallet and then hands admin to the demo admin wallet.
   const config = {
     contractAddress:      address,
     parcelTokenAddress:   tokenAddress,
     adminAddress:         admin.address,
     judgeAddress:         judge.address,
     outsideJudgeAddress:  outsideJudge.address,
-    registrarAddress:     admin.address,  // admin is also the REGISTRAR co-signer
     territories: {
       vellore,
       chennai,
