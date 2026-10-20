@@ -1,7 +1,6 @@
 # NyayaChain — Status
 
-**Last updated:** 2026-10-13
-**Branch:** main
+**Last updated:** 2026-10-20
 
 ## Implemented
 
@@ -32,7 +31,7 @@
 - `HistoryEntry` has a new `checksBitmask uint256` field.
 - Bitmask is **13 bits wide** (bits 0–12): EXPIRY, REPLAY, RECOVER, NO_DUPE, REGISTRY, VALIDITY, JURISDICTION, QUORUM_JUDGE, QUORUM_CLERK, NONCE, PECUNIARY, FROZEN_STATE, QUORUM_REGISTRAR.
 - `submitFreezeOrder` runs **12 checks** (bits 0–10, 12); `submitUnfreezeOrder` runs **13 checks** (bits 0–12, adding FROZEN_STATE at bit 11).
-- `getOrderChecks(tokenId, orderHash, orderExpiry, nonce, signatures)` — view function; mirrors the freeze path (12 checks); returns bitmask of passing checks without reverting. Uses `ECDSA.tryRecover` to avoid reverts in view context.
+- `getOrderChecks(action, tokenId, caseNumber, orderExpiry, nonce, signatures)` — view function; returns a 13-bit mask of passing checks without reverting. It evaluates 12 freeze checks or 13 unfreeze checks, including FROZEN_STATE for unfreeze. Uses `ECDSA.tryRecover` in view context.
 - Events `OrderAccepted` and `OrderVacated` now emit `checksBitmask`, `signers[]`, and `roles[]`.
 - `HistoryEntry` also stores `address[] signers` and `uint8[] roles` per order.
 - `getFreezeHistorySigners(tokenId, index)` returns signers and roles for any history entry.
@@ -63,12 +62,13 @@
 - `proposeAdmin(newAdmin)` and `acceptAdmin()` provide a two-step handover. Only the current admin may propose; only the pending address may accept. `AdminTransferred(oldAdmin, newAdmin)` records completion, and `isAdmin(address)` supports portal access checks.
 - A registered signer, including a revoked signer, cannot be proposed as admin. The current or pending admin cannot be registered as a signer.
 - The demo uses a separate funded admin wallet. `seed-demo.js` transfers admin rights from the deployer after registering demo signers and parcels; `registrar.html` permits writes only when `isAdmin(connectedAddress)` is true.
+- The Registry Admin is a single key with a two-step handover and no recovery path, so a lost admin key prevents further signer changes. Production use would place this role behind a multi-signature wallet or hardware key.
 
 ### Step 5 — Tests, benchmarks, docs
 - `test/negative-corpus.js`: 43 test cases (37 existing cases + 6 Registry Admin cases).
   - Cases 31–36: valid bundle reused with different tokenId, expiry, action, nonce, caseNumber, or contract — all revert with "Unregistered or revoked signer".
   - Case 37: `NyayaDigest.compute` matches on-chain `computeOrderDigest` for 3 inputs.
-- Registry Admin verification: 43/43 tests pass on Hardhat and 43/43 pass on the four-node Besu QBFT network. The earlier Sprint 0c demo preflight was 16 PASS, 0 FAIL; the new admin preflight is run after redeploy and reseed.
+- Registry Admin verification: 43/43 tests pass on Hardhat and 43/43 passed on the four-node Besu QBFT network. On 2026-10-20, the Hardhat suite passed 43/43 and the freshly redeployed demo preflight passed 18/18.
 - Besu QBFT three-signer benchmark (100 freeze orders): average 1,994 ms, median 2,051 ms, p95 2,076 ms, p99 2,110 ms, min 1,535 ms, max 2,579 ms. Results saved under `besu_three_signer`.
 - Prior Besu results retained under `besu_multi_signer` and `besu_single_signer_legacy` keys in `data/benchmark-results.json`.
 - `docs/idf-b-alignment.md` added.
@@ -82,7 +82,7 @@
 
 ## Not implemented / out of scope
 - Full T-REX identity registry: out of scope; `ParcelToken` implements the freeze surface only.
-- No off-chain backend or indexer exists in this repo. All state is queried directly from the chain via ethers.js.
+- No off-chain indexer exists in this repo. Public state is queried directly from the chain via ethers.js. The optional local order mailbox coordinates pending order signatures but is untrusted; the browser and contract verify them.
 
 ### Security fix: order binding
 

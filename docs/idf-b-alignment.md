@@ -3,6 +3,8 @@
 This document lists each IDF-B claim and the code that backs it.
 Claims are stated only where the implementation actually delivers them.
 
+The current prototype requires a **three-signer quorum** (Judge, Clerk, Registrar), with a separate **Registry Admin**. It records **12 freeze checks** or **13 unfreeze checks** in a **13-bit bitmask**; the test corpus contains **43 cases**. `ParcelToken` is an **ERC-3643-compatible subset**.
+
 ---
 
 ## Claim 1: Court orders are authenticated by cryptographic signature
@@ -32,7 +34,7 @@ Claims are stated only where the implementation actually delivers them.
 
 ---
 
-## Claim 4: Multi-court quorum is required (Step 1)
+## Claim 4: Three-role quorum is required (Step 1)
 
 **Evidence:**
 - `submitFreezeOrder` accepts `bytes[] calldata signatures`. At least `quorumThreshold` (default 3) signatures are required.
@@ -52,7 +54,7 @@ Claims are stated only where the implementation actually delivers them.
 
 ---
 
-## Claim 6: Freeze operations delegate to an ERC-3643-compatible token (Step 3)
+## Claim 6: Freeze operations delegate to an ERC-3643-compatible subset (Step 3)
 
 **Evidence:**
 - `contracts/ParcelToken.sol` — implements `setAddressFrozen`, `freezePartialTokens`, `unfreezePartialTokens`, `isFrozen`, `canTransfer`.
@@ -60,7 +62,7 @@ Claims are stated only where the implementation actually delivers them.
 - `CourtKeyRegistry` is the token's agent; `setAgent` is called in deploy scripts.
 - `CourtKeyRegistry.frozen(tokenId)` reads through to `parcelToken.isFrozen(_propertyAddress(tokenId))`.
 - Test case 26 verifies non-agent cannot call `setAddressFrozen`.
-- Full T-REX identity registry is **not** implemented; this is a freeze-surface subset only.
+- Full T-REX identity registry is **not** implemented; `ParcelToken` is an **ERC-3643-compatible subset** that implements the freeze surface only.
 
 ---
 
@@ -102,5 +104,5 @@ Claims are stated only where the implementation actually delivers them.
 
 - Full ERC-3643 / T-REX compliance (only the freeze surface is implemented).
 - A production-ready identity registry.
-- An off-chain indexer or REST API (all state is queried on-chain).
+- An off-chain indexer or trusted REST data source. Public state is queried on-chain; the optional local order mailbox is untrusted coordination storage.
 - Formal proof of finality (Besu QBFT provides BFT finality under the standard 2f+1 assumption).
