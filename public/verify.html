@@ -70,8 +70,9 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
     if (!["freeze","unfreeze"].includes(action)) throw Error("Action must be freeze or unfreeze");
     if (!/^\d+$/.test(String(order.tokenId)) || !/^\d+$/.test(String(order.nonce)) || !/^\d+$/.test(String(order.orderExpiry))) throw Error("Token, nonce and expiry must be unsigned integers");
     if (typeof order.caseNumber !== "string" || !order.caseNumber) throw Error("Case number is required");
-    const signatures = (order.signatures || []).map(s => typeof s === "string" ? s : s.signature);
-    if (!Array.isArray(order.signatures) || signatures.some(s => !ethers.isHexString(s))) throw Error("Signatures must be hex strings");
+    if (!Array.isArray(order.signatures)) throw Error("Signatures must be hex strings");
+    const signatures = order.signatures.map(s => typeof s === "string" ? s : s.signature);
+    if (signatures.some(s => !ethers.isHexString(s))) throw Error("Signatures must be hex strings");
     const actionId = action === "unfreeze" ? 1 : 0;
     const hash = NyayaDigest.compute(action, order.tokenId, order.caseNumber, order.orderExpiry, order.nonce, chainId, config.contractAddress);
     // Also verify against the on-chain computeOrderDigest (Sprint 0c)
@@ -82,14 +83,42 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
     details.push(`EIP-191 signed-message hash: ${ethers.hashMessage(ethers.getBytes(hash))}`);
     if (!digestMatch) errors.push("JS digest does not match on-chain computeOrderDigest — contract or helper mismatch");
     if (order.orderHash && order.orderHash.toLowerCase() !== hash.toLowerCase()) errors.push("Supplied orderHash differs from the recomputed digest");
-    const block = accepted?.block || await provider.getBlock("latest");
+    if (accepted) {
+      // Besu's old state can be pruned. A successful receipt and the stored
+      // history are the historical evidence; never read registry(..., blockTag)
+      // for an accepted transaction or substitute today's roles for old ones.
+      const recovered = [];
+      const signerRoles = Array.from(accepted.roles, Number);
+      if (signatures.length < 3) errors.push("Fewer than three order signatures");
+      if (accepted.signers.length !== signatures.length || signerRoles.length !== signatures.length) errors.push("Event signer or role count differs from transaction signatures");
+      if (Number(accepted.block.timestamp) > Number(order.orderExpiry)) errors.push("Order expired at the acceptance block");
+      for (let i=0;i<signatures.length;i++) {
+        let address;
+        try { address = ethers.verifyMessage(ethers.getBytes(hash), signatures[i]); }
+        catch { errors.push(`Signature ${i+1}: invalid EIP-191 signature`); continue; }
+        recovered.push(address);
+        const role = roles[signerRoles[i]] || "Unknown";
+        details.push(`Signature ${i+1}: ${role} · ${address}`);
+        if (accepted.signers[i]?.toLowerCase() !== address.toLowerCase()) errors.push(`Signature ${i+1}: receipt signer differs from recovered address`);
+        if (order.signatures[i]?.signer && order.signatures[i].signer.toLowerCase() !== address.toLowerCase()) errors.push(`Signature ${i+1}: claimed signer differs from recovered address`);
+        if (order.signatures[i]?.role && ![role.toLowerCase(),String(signerRoles[i])].includes(String(order.signatures[i].role).toLowerCase())) errors.push(`Signature ${i+1}: claimed role differs from receipt role ${role}`);
+      }
+      if (new Set(recovered.map(a=>a.toLowerCase())).size !== recovered.length) errors.push(names.NO_DUPE);
+      for (const [number, name] of [[1,"QUORUM_JUDGE"],[2,"QUORUM_CLERK"],[3,"QUORUM_REGISTRAR"]]) {
+        if (!signerRoles.includes(number)) errors.push(names[name]);
+      }
+      details.push(`Stored acceptance checks: 0x${accepted.bitmask.toString(16)}`);
+      for (const ch of checks.checks.filter(ch=>ch.actions.includes(action))) {
+        if (!(accepted.bitmask & (1n << BigInt(ch.bit)))) errors.push(`Stored check failed: ${ch.name}`);
+      }
+      details.push("Historical registry, jurisdiction and limits are evidenced by the accepted on-chain check record; pruned state cannot be independently re-read at this block.");
+      return { errors, details, recovered, signerRoles, hash };
+    }
+    const block = await provider.getBlock("latest");
     const atBlock = {blockTag:block.number};
     const threshold = await contract.quorumThreshold(atBlock);
     if (signatures.length < Number(threshold)) errors.push(`Signatures below quorum threshold: ${signatures.length}/${threshold}`);
-    if (Number(block.timestamp) > Number(order.orderExpiry)) {
-      if (!accepted) errors.push(names.EXPIRY);
-      else details.push("Order is expired now; checked against the acceptance block");
-    }
+    if (Number(block.timestamp) > Number(order.orderExpiry)) errors.push(names.EXPIRY);
     const recovered = [];
     for (let i=0;i<signatures.length;i++) {
       let address;
@@ -115,7 +144,7 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
       if (!signerRoles.includes(number)) errors.push(names[name]);
     }
     const judge = recovered[signerRoles.indexOf(1)];
-    if (judge && !accepted) {
+    if (judge) {
       const expected = await contract.judgeNonce(judge);
       if (BigInt(order.nonce) !== expected) errors.push(`${names.NONCE}: expected ${expected}, got ${order.nonce}`);
     }
@@ -125,20 +154,11 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
       details.push(`Pecuniary: ₹${value.toLocaleString("en-IN")} declared vs ₹${max.toLocaleString("en-IN")} court limit`);
       if (value > max) errors.push(names.PECUNIARY);
     }
-    if (!accepted) {
-      const bits = BigInt(await contract.getOrderChecks(actionId,order.tokenId,order.caseNumber,order.orderExpiry,order.nonce,signatures));
-      details.push(`On-chain preflight bitmask: 0x${bits.toString(16)}`);
-      // Sprint 0c: getOrderChecks now includes FROZEN_STATE for unfreeze — no workaround needed.
-      const first = checks.checks.find(ch => ch.actions.includes(action) && !(bits & (1n << BigInt(ch.bit))));
-      if (first && !errors.length) errors.push(names[first.id] || first.name);
-      if (await contract.usedOrders(hash)) errors.push(names.REPLAY);
-    } else {
-      details.push(`Stored acceptance checks: 0x${accepted.bitmask.toString(16)}`);
-      const required = checks.checks.filter(ch=>ch.actions.includes(action));
-      for (const ch of required) if (!(accepted.bitmask & (1n << BigInt(ch.bit)))) errors.push(`Stored check failed: ${ch.name}`);
-      if (accepted.signers.length !== recovered.length || accepted.signers.some((s,i)=>s.toLowerCase() !== recovered[i]?.toLowerCase())) errors.push("Event signer list differs from recovered signatures");
-      if (accepted.roles.some((r,i)=>Number(r)!==signerRoles[i])) errors.push("Event roles differ from registry roles");
-    }
+    const bits = BigInt(await contract.getOrderChecks(actionId,order.tokenId,order.caseNumber,order.orderExpiry,order.nonce,signatures));
+    details.push(`On-chain preflight bitmask: 0x${bits.toString(16)}`);
+    const first = checks.checks.find(ch => ch.actions.includes(action) && !(bits & (1n << BigInt(ch.bit))));
+    if (first && !errors.length) errors.push(names[first.id] || first.name);
+    if (await contract.usedOrders(hash)) errors.push(names.REPLAY);
     return { errors, details, recovered, signerRoles, hash };
   }
   document.getElementById("verify-json").onclick = async () => {
@@ -171,7 +191,7 @@ button:hover{background:#1d4ed8}.ok{color:#166534}.bad{color:#b91c1c}.pending{co
       for(let i=0;i<n;i++){
         const h=await contract.getFreezeHistoryEntry(order.tokenId,i);
         const hs=await contract.getFreezeHistorySigners(order.tokenId,i);
-        if(h.caseNumber===order.caseNumber && h.nonce===args.nonce && h.isFreezeAction===(order.action==="freeze") && h.checksBitmask===event.args.checksBitmask && hs.signers.length===event.args.signers.length && hs.signers.every((s,j)=>s.toLowerCase()===event.args.signers[j].toLowerCase())){historyMatch=true;break}
+        if(h.caseNumber===order.caseNumber && h.nonce===args.nonce && h.isFreezeAction===(order.action==="freeze") && h.timestamp===BigInt(block.timestamp) && h.signer.toLowerCase()===event.args.signer.toLowerCase() && h.checksBitmask===event.args.checksBitmask && hs.signers.length===event.args.signers.length && hs.roles.length===event.args.roles.length && hs.signers.every((s,j)=>s.toLowerCase()===event.args.signers[j].toLowerCase()) && hs.roles.every((role,j)=>role===event.args.roles[j])){historyMatch=true;break}
       }
       const result=await check(order,{block,bitmask:BigInt(event.args.checksBitmask),signers:event.args.signers,roles:event.args.roles});
       if(!historyMatch)result.errors.push("No matching stored history entry");
