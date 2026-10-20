@@ -1,4 +1,6 @@
-# NyayaChain — Judicially Authenticated Property Freeze Protocol
+# A Judicially-Authenticated Freeze Protocol for Tokenized Land Records
+
+**NyayaChain** is the prototype name.
 
 A blockchain-based system for recording and verifying court-ordered property freeze orders, built on a permissioned Ethereum network with cryptographic signature verification.
 
@@ -14,7 +16,7 @@ NyayaChain addresses this by recording freeze and unfreeze orders directly on-ch
 
 ## What the System Does
 
-When a court officer submits a freeze or unfreeze order, the smart contract runs **11 sequential on-chain verification checks** (freeze) or **12** (unfreeze) before accepting it:
+When a court officer submits a freeze or unfreeze order, the smart contract runs **12 on-chain verification checks** (freeze) or **13** (unfreeze) before accepting it. The order quorum is one Judge, one Clerk and one Registrar. A separate **Registry Admin** manages signer registrations and limits, and cannot sign orders. `ParcelToken` is an **ERC-3643-compatible subset**.
 
 | # | Check | Revert Reason on Failure |
 |---|-------|--------------------------|
@@ -25,15 +27,18 @@ When a court officer submits a freeze or unfreeze order, the smart contract runs
 | 5 | All recovered signers are active in `CourtKeyRegistry` | `Unregistered or revoked signer` |
 | 6 | All signers' judicial keys are within their validity windows | `Judicial key expired or not yet valid` |
 | 7 | Court's registered territory covers the property's territory (hierarchical) | `Court lacks territorial jurisdiction over this property` |
-| 8 | At least one signer holds `ROLE_JUDGE` | `No judge among signers` |
-| 9 | At least one signer holds `ROLE_CLERK` or `ROLE_REGISTRAR` | `No clerk or registrar co-signer` |
+| 8 | At least one signer holds `ROLE_JUDGE` | `At least one JUDGE signature required` |
+| 9 | At least one signer holds `ROLE_CLERK` | `At least one CLERK signature required` |
 | 10 | Nonce matches the judge's expected sequential counter | `Invalid nonce` |
 | 11 | Property's declared value is within the judge's court-level pecuniary limit | `Declared value exceeds court pecuniary limit` |
 | 12† | Token is currently frozen (unfreeze orders only) | `Token is not frozen` |
+| 13 | At least one signer holds `ROLE_REGISTRAR` | `At least one REGISTRAR signature required` |
 
-† Check 12 applies to `submitUnfreezeOrder` only. The `checksBitmask` stored in every `HistoryEntry` is **12 bits wide** (bits 0–11), mapping one bit to each check. A set bit means the check passed at acceptance time.
+† Check 12 applies to `submitUnfreezeOrder` only. The `checksBitmask` stored in every `HistoryEntry` is **13 bits wide** (bits 0–12); freeze uses 12 of those bits and unfreeze uses all 13. A set bit means the check passed at acceptance time. Check names and counts are defined in `public/checks.json`.
 
 Only if all applicable checks pass is the freeze state updated and the order recorded in the immutable freeze history.
+
+Public status, history and events are read directly from Besu. There is no indexer. An optional local, untrusted order mailbox helps signers exchange pending orders; it does not authorize or verify a freeze.
 
 ---
 
@@ -61,7 +66,7 @@ land-tokenization/
 │   ├── deploy-besu.js             # Deploy + seed to Besu
 │   └── benchmark.js               # 100-tx latency benchmark (both networks)
 ├── test/
-│   └── negative-corpus.js         # 27 test cases (26 rejection paths + 1 happy path)
+│   └── negative-corpus.js         # 43 test cases
 ├── docker/
 │   ├── docker-compose.yml         # 4-node Besu QBFT cluster
 │   ├── genesis.json               # Genesis with pre-funded Hardhat accounts
@@ -148,7 +153,7 @@ docker compose -f docker/docker-compose.yml down -v
 npx hardhat test test/negative-corpus.js
 ```
 
-**On Besu (slow — 2s block time × ~10 tx/setup × 27 tests ≈ 14 min; cluster must be running):**
+**On Besu (slow; cluster must be running):**
 ```bash
 npx hardhat test test/negative-corpus.js --network besu
 ```
@@ -164,65 +169,11 @@ Results are written to `data/benchmark-results.json`.
 
 ## Demo Walkthrough
 
-### Portal 1 — Public Verification (`/index.html`)
+Use the current [10-minute demo script](docs/demo-script.md). The Judge creates and signs the order for Token 4, the Clerk and Registrar each import and sign it, and the completed order is submitted to Besu. The public citizen page, inspector, independent verifier, scenario console and explorer show the resulting evidence. `registrar.html` requires the separate Registry Admin account for write actions.
 
-1. Open `http://localhost:3000`. The nav bar shows **Connected** once the chain is reachable.
-2. Enter a property token ID (1, 2, or 3) in the **Verify a Property** section.
-3. Click **Check Status**. The page displays the current freeze state, territory, active case number (if frozen), and the full freeze/unfreeze history for that token.
+## Negative Corpus — 43 Test Cases
 
-### Portal 2 — Court Officer Portal (`/court.html`)
-
-1. Open `http://localhost:3000/court.html`.
-2. **Select Court Officer** — choose the Vellore judge or the Kadapa judge from the dropdown. Registry status and current nonce are auto-populated.
-3. **Select a property token** — territory and current freeze status are shown inline.
-4. Fill in a **Case Number** (e.g. `I.A.No.2 of 2024 in O.S.No.5111 of 2024`) and an expiry window.
-5. Click **Sign & Submit Freeze**. The page walks through all 11 steps in real time, showing pass/fail for each check.
-6. To unfreeze, click **Sign & Submit Unfreeze** — nonce auto-increments.
-7. **Demonstrate a rejection:** select the Vellore judge and Token 3 (Kadapa) and attempt a freeze — it will fail at check 9 (territorial jurisdiction).
-
-### Portal 3 — Registrar Portal (`/registrar.html`)
-
-1. Open `http://localhost:3000/registrar.html`.
-2. Sign in with the separate **Registry Admin** wallet. The header shows that role; a Registrar signer has a read-only view.
-3. **Register a new judge** — paste a wallet address, enter court name, select court level and territory, set validity window (unix timestamps; use `0` and `9999999999` for always-valid), then click **Register Judge**.
-4. **Revoke a judge** — paste the judge's address into the address field and click **Revoke Judge**. Their next freeze attempt will fail at check 4.
-5. The **Registered Judges** section lists all known judges with active/revoked status and current nonce.
-
----
-
-## Negative Corpus — 27 Test Cases
-
-| Case | Scenario | Action | Expected Outcome |
-|------|----------|--------|-----------------|
-| 1 | Unregistered signer submits freeze | Freeze | Rejected — `Unregistered or revoked signer` |
-| 2 | Revoked signer submits freeze | Freeze | Rejected — `Unregistered or revoked signer` |
-| 3 | Judicial key past `validUntil` | Freeze | Rejected — `Judicial key expired or not yet valid` |
-| 4 | Judicial key before `validFrom` | Freeze | Rejected — `Judicial key expired or not yet valid` |
-| 5 | Order timestamp already expired | Freeze | Rejected — `Order has expired` |
-| 6 | Exact same order submitted twice | Freeze | Second rejected — `Order already submitted` |
-| 7 | Nonce skipped (submitted nonce=5, expected 0) | Freeze | Rejected — `Invalid nonce` |
-| 8 | Nonce repeated (nonce=0 after nonce=0 already used) | Freeze | Rejected — `Invalid nonce` |
-| 9 | Vellore judge attempts to freeze Kadapa property (Token 3) | Freeze | Rejected — `Court lacks territorial jurisdiction over this property` |
-| 10 | Kadapa judge attempts to freeze Vellore property (Token 1) | Freeze | Rejected — `Court lacks territorial jurisdiction over this property` |
-| 11 | Valid signature but order hash tampered (different token ID) | Freeze | Rejected — `Unregistered or revoked signer` (ECDSA recovers wrong address) |
-| 12 | Empty signature (`0x`) | Freeze | Reverts — OpenZeppelin ECDSA rejects |
-| 13 | Malformed signature (63 bytes instead of 65) | Freeze | Reverts — invalid signature length |
-| 14 | Signature with r=0, s=0 (recovers to zero address) | Freeze | Reverts — zero address not in registry |
-| 15 | Freeze an already-frozen token | Freeze | **Accepted** — dual-court freeze is permitted; both orders recorded in history |
-| 16 | Unfreeze a token that is not frozen | Unfreeze | Rejected — `Token is not frozen` |
-| 17 | Kadapa judge attempts to unfreeze Vellore property | Unfreeze | Rejected — `Court lacks territorial jurisdiction over this property` |
-| 18 | Revoked signer attempts to unfreeze | Unfreeze | Rejected — `Unregistered or revoked signer` |
-| 19 | Replay of a previously accepted unfreeze order | Unfreeze | Rejected — `Order already submitted` |
-| 20 | Wrong nonce on unfreeze (nonce=99, expected=1) | Unfreeze | Rejected — `Invalid nonce` |
-| 21 | Only judge signature — no co-signer (CLERK/REGISTRAR) | Freeze | Rejected — `No clerk or registrar co-signer` |
-| 22 | Same address appears twice in signature array | Freeze | Rejected — `Duplicate signer` |
-| 23 | Two REGISTRAR signatures but no JUDGE | Freeze | Rejected — `No judge among signers` |
-| 24 | Empty signatures array | Freeze | Rejected — `Below quorum threshold` |
-| 25 | Property declared value exceeds judge's court-level pecuniary limit | Freeze | Rejected — `Declared value exceeds court pecuniary limit` |
-| 26 | Non-agent account calls `ParcelToken.setAddressFrozen` directly | Direct call | Rejected — `Only the agent can call this` |
-| 27 | Full freeze + unfreeze lifecycle with fresh random wallets (demo path) | Freeze then Unfreeze | **Both accepted** — validates the demo export/import flow end to end |
-
-> **Note on Case 15:** The contract intentionally allows multiple authenticated freeze orders on the same token. Different creditor courts may independently freeze the same property. Each order is appended to `freezeHistory`; `frozenBy` is updated to the latest case number.
+`test/negative-corpus.js` covers authorization, signature validity, jurisdiction, replay, nonces, order-field binding, the three-role quorum and Registry Admin handover. Run `npx hardhat test` to execute all 43 cases. Cases 38–43 cover Registry Admin permissions and separation of duties.
 
 ---
 
@@ -269,7 +220,7 @@ node scripts/seed-demo.js
 **Step 5 — Run the preflight check:**
 ```bash
 node scripts/demo-check.js
-# Every line must show PASS before continuing.
+# Expect 18 PASS and 0 FAIL before continuing.
 ```
 
 **Step 6 — Set up MetaMask:**
@@ -291,14 +242,14 @@ npm run serve
 **Step 8 — Demo cycle (success path):**
 1. Open `court.html` in the Judge's Chrome profile.
 2. Connect Wallet → select the Judge account → confirm role shows JUDGE.
-3. Select Token 4 (Parcel A — Vellore success case), enter a case number, click **Sign Order**.
+3. Select Token 4 (Parcel A — Vellore success case), enter a case number, click **Review order**, then **Sign with wallet**.
 4. Click **Export Order** and copy the JSON.
 5. Open `court.html` in the Clerk's Chrome profile.
 6. Connect Wallet → confirm role shows CLERK.
 7. Click **Import Order**, paste the JSON, co-sign.
-8. Click **Submit** — both signatures meet the quorum threshold.
-9. Open `index.html` (no wallet needed) → Token 4 shows FROZEN.
-10. Repeat steps 2–8 for Unfreeze to complete the lifecycle.
+8. Export the updated order, import it in the Registrar profile, and co-sign.
+9. Export the three-signature order and import it in the Judge profile. Click **Submit to chain** after the pre-flight checks pass.
+10. Open `index.html` (no wallet needed) → Token 4 shows FROZEN and the three signers appear in history. Repeat the three-signature flow for Unfreeze if time permits.
 
 **Step 9 — Demo failure cases:**
 - **Parcel B (Token 5):** Select Parcel B in the judge's profile. Sign and go through the multi-signer flow. On submit, check 11 (Pecuniary limit) will FAIL — ₹2Cr exceeds the District Court ₹1Cr limit.
@@ -308,7 +259,7 @@ npm run serve
 ### Troubleshooting
 
 - **After a chain reset**, clear each account's activity data in MetaMask: Settings → Advanced → Clear activity tab data. Otherwise MetaMask will use stale nonces that don't match the fresh chain.
-- **After a chain reset**, run `setup-demo-wallets.js --force` and `seed-demo.js` again. Balances and registrations are gone after a volume wipe.
+- **After a chain reset**, retain the existing demo wallets, redeploy, and run `seed-demo.js` again. Fund the wallets again if the chain volume was wiped.
 - **Wrong network error in MetaMask**: Check that the Chain ID in `public/wallet.js` matches `docker/genesis.json` (both should be `1337`).
 - **Demo keys are for the demo only.** Never use them on a wallet holding real funds.
 
@@ -316,21 +267,18 @@ npm run serve
 
 ## Benchmark Results
 
-100 consecutive freeze transactions on each network. Recorded in `data/benchmark-results.json`.
+The recorded 100-order Besu QBFT **three-signer** freeze benchmark is saved under `besu_three_signer` in `data/benchmark-results.json`. Each order uses a Judge, Clerk and Registrar signature.
 
-| Metric | Hardhat localhost (Chain ID 31337) | Besu QBFT multi-signer (Chain ID 1337) |
-|--------|-----------------------------------|-----------------------------------------|
-| Min latency | 1 ms | 1,528 ms |
-| Max latency | 6 ms | 2,056 ms |
-| Average | 2 ms | 1,999 ms |
-| Median (p50) | 2 ms | 2,039 ms |
-| p95 | 3 ms | 2,051 ms |
-| p99 | 3 ms | 2,054 ms |
-| Transactions | 100 | 100 |
+| Metric | Besu QBFT, 100 three-signer orders |
+| --- | ---: |
+| Average | 1,994 ms |
+| Median | 2,051 ms |
+| p95 | 2,076 ms |
+| p99 | 2,110 ms |
+| Minimum | 1,535 ms |
+| Maximum | 2,579 ms |
 
-All Besu results use multi-signer orders (JUDGE + REGISTRAR co-signature), matching the production quorum requirement. Legacy single-signer Besu results are retained in `data/benchmark-results.json` under `besu_single_signer_legacy` for comparison.
-
-Hardhat's in-process node mines instantly, giving sub-10ms round-trips. Besu QBFT operates with a ~2s block time by consensus protocol design, placing all latencies in the 1.5–2.1s range. The tight p95/p99 spread on Besu (3ms) indicates consistent block production with no outlier blocks during the test run.
+Older single-signer and two-signer results remain in the data file for historical comparison; they do not describe the current order quorum.
 
 ---
 
@@ -351,13 +299,9 @@ Documents sourced from eCourts and official court portals. Case numbers, court h
 
 ## Team
 
-| Name | Role |
-|------|------|
-| **Maneesh Arinova** | Smart contract architecture, deployment scripting, frontend development, system integration |
-| **Niharika** | Court hierarchy mapping, jurisdiction policy design, legal domain research |
-| **Vijay** | Testing, negative corpus design, Besu deployment and benchmarking |
+The proposed contribution summary is being checked by each teammate before inclusion in the report. The current work areas are protocol and contract (Maneesh), workflow and access (Niharika), and transparency and verification (Vijay).
 
-**Project Guide:** Dr. Anthony Seba P.
+**Project Guide:** Dr. Antony Seba P.
 
 ---
 

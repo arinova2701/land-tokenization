@@ -1,14 +1,14 @@
 # NyayaChain — Shared Interfaces
 
-**Sprint 0a · 2026-10-12**
+**Updated 2026-10-20**
 
-This document is the single source of truth for every integration point between Track A (Niharika), Track B (Vijay), and the contracts (Maneesh). If you need a change here, tell Maneesh rather than editing this file yourself.
+This document describes the current integration points between the workflow, transparency pages and contracts. The three-signer quorum is Judge + Clerk + Registrar; the Registry Admin is separate. The contract has 12 freeze checks, 13 unfreeze checks, a 13-bit check mask, and a 43-case negative corpus. `ParcelToken` is an **ERC-3643-compatible subset**.
 
 ---
 
 ## 1. Contract — CourtKeyRegistry
 
-ABI and addresses are in `public/config.json`. Use `ethers.BrowserProvider(window.ethereum)` for read-only calls and `provider.getSigner()` for signing.
+Contract addresses are in `public/config.json`; the ABI is in the frontend code and generated artifacts. Use `ethers.JsonRpcProvider` for public read-only calls and `ethers.BrowserProvider(window.ethereum)` with `provider.getSigner()` for wallet signing.
 
 ### 1.1 Read functions
 
@@ -255,7 +255,7 @@ An order object passed between signers (via export/import or the coordination se
   "caseNumber": "CIV/42/2026",
   "orderExpiry": 1760000000,        // Unix timestamp (seconds)
   "nonce":      3,                  // judgeNonce[judgeAddress] at creation time
-  "orderHash":  "0x…",              // keccak256 of (tokenId, caseNumber, orderExpiry, nonce)
+  "orderHash":  "0x…",              // computeOrderDigest: chain, contract, action and order fields
   "signatures": [
     {
       "signer":    "0xABCD…",       // recovered address
@@ -274,7 +274,7 @@ An order object passed between signers (via export/import or the coordination se
 
 ---
 
-## 4. Coordination service API (Niharika builds, Vijay reads)
+## 4. Optional untrusted order mailbox API
 
 Base URL: `http://localhost:3001`. All requests and responses are JSON.
 The service is an untrusted off-chain mailbox. The browser verifies all signatures; the contract enforces all rules.
