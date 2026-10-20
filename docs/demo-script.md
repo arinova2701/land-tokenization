@@ -1,6 +1,6 @@
 # NyayaChain — 10-minute demo script
 
-Prepare the four-node Besu chain, deploy and seed the current contracts, and run `node scripts/demo-check.js` before the panel. Expect 18 PASS. Start the web page with `npm run serve`. Use separate browser profiles for the Judge, Clerk and Registrar demo wallets; keep an Admin profile ready for registry management. Open the public citizen page without a wallet. Keep an exported order JSON or its downloaded file available for handoff between profiles. Use a fresh case number and the current on-chain nonce. This script demonstrates the freeze path for Token 4; rehearse once so the live signing steps fit the time.
+Prepare the four-node Besu chain, deploy and seed the current contracts, and run `node scripts/demo-check.js` before the panel. Expect 18 PASS. Start the web page with `npm run serve` and, in another terminal, start the optional scenario runner with `DEMO_MODE=1 npm run orders-server`. Use separate browser profiles for the Judge, Clerk and Registrar demo wallets; keep an Admin profile ready for registry management. Open the public citizen page without a wallet. Keep an exported order JSON or its downloaded file available for handoff between profiles. Use a fresh case number and the current on-chain nonce. This script demonstrates the freeze path for Token 4; rehearse once so the live signing steps fit the time.
 
 | Time | Mode | Presenter action and point to explain |
 | --- | --- | --- |
