@@ -96,6 +96,7 @@ nav {
 
 <script>
 const ROLE_COLORS = {
+  ADMIN:     { bg: "#EDE9FE", fg: "#6D28D9" },
   JUDGE:     { bg: "#DBEAFE", fg: "#1D4ED8" },
   CLERK:     { bg: "#FEF3C7", fg: "#B45309" },
   REGISTRAR: { bg: "#DCFCE7", fg: "#15803D" },
@@ -106,6 +107,18 @@ const PAGE_LABELS = { "court.html": "Court workspace", "registrar.html": "Regist
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(window.location.search);
 const reason = params.get("reason");
+
+async function isRegistryAdmin(address) {
+  try {
+    const config = await (await fetch("config.json")).json();
+    const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    const registry = new ethers.Contract(config.contractAddress, ["function isAdmin(address) view returns (bool)"], provider);
+    return await registry.isAdmin(address);
+  } catch (e) {
+    console.error("Could not read Registry Admin status", e);
+    return false;
+  }
+}
 
 function showNotice(kind, html) {
   $("notice").innerHTML = '<div class="msg msg-' + kind + '">' + html + '</div>';
@@ -161,22 +174,23 @@ async function renderSession(s, { autoRoute }) {
   $("btn-network").classList.add("hidden");
   $("btn-continue").classList.remove("hidden");
 
-  const roleKey = s.role || "NONE";
+  const isAdmin = await isRegistryAdmin(s.address);
+  const roleKey = isAdmin ? "ADMIN" : (s.role || "NONE");
   const c = ROLE_COLORS[roleKey];
   $("rc-addr").textContent = NyayaWallet.shortAddress(s.address);
   $("rc-addr").title = s.address;
   const badge = $("rc-role");
-  badge.textContent = s.role || "No role";
+  badge.textContent = isAdmin ? "Registry Admin" : (s.role || "No role");
   badge.style.background = c.bg;
   badge.style.color = c.fg;
-  $("rc-court").textContent = s.courtName || "—";
+  $("rc-court").textContent = isAdmin ? "Registry administration" : (s.courtName || "—");
 
-  const dest = NyayaWallet.homeFor(s.role);
+  const dest = isAdmin ? "registrar.html" : NyayaWallet.homeFor(s.role);
   $("btn-continue").href = dest;
   $("btn-continue").textContent = "Continue to " + (PAGE_LABELS[dest] || dest);
 
   const hint = $("rc-hint");
-  if (!s.role) {
+  if (!s.role && !isAdmin) {
     hint.textContent = "This wallet has no active role on-chain, so you will see the public land register. Ask the registrar to register your wallet as a signer.";
     hint.classList.remove("hidden");
   } else {

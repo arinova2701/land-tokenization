@@ -25,7 +25,7 @@ const path  = require("path");
 const { NyayaDigest } = require("../public/order-digest");
 
 const RESULTS_FILE = path.join(__dirname, "../data/benchmark-results.json");
-const TX_COUNT     = 100;
+const TX_COUNT     = Number(process.env.TX_COUNT) || 100;
 const TOKEN_ID     = 1;
 const ORDER_TTL_S  = 3600;
 
@@ -81,7 +81,7 @@ function printTable(label, s, count, elapsed) {
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
-async function setupContracts(admin, judge, clerk) {
+async function setupContracts(admin, judge, clerk, registrar) {
   console.log("  Deploying ParcelToken...");
   const TokenFactory = await hre.ethers.getContractFactory("ParcelToken");
   const token = await TokenFactory.deploy();
@@ -117,9 +117,9 @@ async function setupContracts(admin, judge, clerk) {
     clerk.address, "District Court Vellore Clerk", 0, oneYear, 3, vellore, 2
   )).wait();
 
-  // Admin: ROLE_REGISTRAR, national co-signer
+  // Registrar: ROLE_REGISTRAR, national co-signer (separate wallet, never the deployer)
   await (await contract.registerJudge(
-    admin.address, "Land Registry Authority", 0, oneYear, 4, tamilNadu, 3
+    registrar.address, "Land Registry Authority", 0, oneYear, 4, tamilNadu, 3
   )).wait();
 
   console.log("  Setup complete");
@@ -141,19 +141,20 @@ async function main() {
   console.log(`  Token         : #${TOKEN_ID}`);
 
   const [admin, judge] = await hre.ethers.getSigners();
-  // Create a fresh clerk wallet and fund it from admin (no genesis.json change needed)
-  const clerk = hre.ethers.Wallet.createRandom().connect(hre.ethers.provider);
-  await (await admin.sendTransaction({
-    to: clerk.address,
-    value: hre.ethers.parseEther("1"),
-  })).wait();
+  // Create fresh clerk and registrar wallets and fund them from admin
+  // (no genesis.json change needed — deployer is never registered as a signer)
+  const clerk     = hre.ethers.Wallet.createRandom().connect(hre.ethers.provider);
+  const registrar = hre.ethers.Wallet.createRandom().connect(hre.ethers.provider);
+  await (await admin.sendTransaction({ to: clerk.address,     value: hre.ethers.parseEther("1") })).wait();
+  await (await admin.sendTransaction({ to: registrar.address, value: hre.ethers.parseEther("1") })).wait();
 
-  console.log(`  Admin/Registrar: ${admin.address}`);
-  console.log(`  Judge          : ${judge.address}`);
-  console.log(`  Clerk          : ${clerk.address}`);
+  console.log(`  Admin (deploy only): ${admin.address}`);
+  console.log(`  Judge              : ${judge.address}`);
+  console.log(`  Clerk              : ${clerk.address}`);
+  console.log(`  Registrar          : ${registrar.address}`);
 
   console.log("\n[ Setup ]");
-  const contract = await setupContracts(admin, judge, clerk);
+  const contract = await setupContracts(admin, judge, clerk, registrar);
   contractAddress = await contract.getAddress();
 
   console.log(`\n[ Sending ${TX_COUNT} freeze orders ]`);
@@ -162,7 +163,7 @@ async function main() {
 
   for (let i = 0; i < TX_COUNT; i++) {
     const caseNumber = `BENCH-${networkName.toUpperCase()}-${String(i).padStart(3, "0")}`;
-    const order      = await makeOrder([judge, clerk, admin], TOKEN_ID, caseNumber, ORDER_TTL_S, i, chainId, contractAddress);
+    const order      = await makeOrder([judge, clerk, registrar], TOKEN_ID, caseNumber, ORDER_TTL_S, i, chainId, contractAddress);
 
     const t0 = Date.now();
     const tx = await contract.connect(judge).submitFreezeOrder(

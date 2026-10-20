@@ -18,6 +18,11 @@ uint8 ROLE_JUDGE     = 1
 uint8 ROLE_CLERK     = 2
 uint8 ROLE_REGISTRAR = 3
 
+// Registry administration is separate from these order signer roles.
+function admin() view returns (address)
+function pendingAdmin() view returns (address)
+function isAdmin(address account) view returns (bool)
+
 // Registry lookup — returns JudicialKey struct fields
 function registry(address signer) view returns (
     string  courtName,
@@ -106,7 +111,13 @@ function quorumThreshold() view returns (uint256)
 
 ### 1.2 Write functions
 
+`registerJudge` rejects the current or pending admin address. `proposeAdmin` rejects any address with a registered signer role, including a revoked signer. The admin never contributes to the order quorum or signs freeze and unfreeze orders.
+
 ```solidity
+// Two-step Registry Admin handover. The candidate must not be a registered signer.
+function proposeAdmin(address newAdmin) external // current admin only
+function acceptAdmin() external                  // pending admin only
+
 // Submit a freeze order. Requires quorumThreshold signatures:
 //   exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR.
 // Sprint 0c: orderHash is no longer a parameter. The contract computes the
@@ -134,6 +145,9 @@ function submitUnfreezeOrder(
 ### 1.3 Events
 
 ```solidity
+event AdminTransferProposed(address indexed currentAdmin, address indexed newAdmin)
+event AdminTransferred(address indexed oldAdmin, address indexed newAdmin)
+
 // Emitted by submitFreezeOrder on success
 event OrderAccepted(
     uint256 indexed tokenId,
@@ -210,10 +224,10 @@ const sig = await signer.signMessage(ethers.getBytes(orderHash));
 {
   "contractAddress":     "0x…",   // CourtKeyRegistry
   "parcelTokenAddress":  "0x…",   // ParcelToken
-  "adminAddress":        "0x…",
+  "adminAddress":        "0x…",   // demo Registry Admin after seed-demo.js handover
   "judgeAddress":        "0x…",   // demo judge wallet
   "outsideJudgeAddress": "0x…",   // demo out-of-jurisdiction judge
-  "registrarAddress":    "0x…",   // demo registrar wallet (also admin)
+  "registrarAddress":    "0x…",   // separate demo order co-signer
   "network":             "besu",
   "territories": {
     "vellore":        "0x…",      // bytes32 keccak256 territory codes

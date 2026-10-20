@@ -79,6 +79,7 @@ contract CourtKeyRegistry {
     // ── Storage ───────────────────────────────────────────────────────────────
 
     address     public admin;
+    address     public pendingAdmin;
     ParcelToken public parcelToken; // ERC-3643-compatible token contract (Step 3)
 
     mapping(address  => JudicialKey)    public registry;
@@ -119,6 +120,8 @@ contract CourtKeyRegistry {
     event ParcelDeclaredValueSet(uint256 indexed tokenId, uint256 value);
     event CourtLevelMaxValueSet(uint8 courtLevel, uint256 maxValue);
     event QuorumThresholdSet(uint256 newThreshold);
+    event AdminTransferProposed(address indexed currentAdmin, address indexed newAdmin);
+    event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
 
     // ── Modifier ──────────────────────────────────────────────────────────────
 
@@ -139,6 +142,28 @@ contract CourtKeyRegistry {
         courtLevelMaxValue[2] = 2_500_000;         // Sub Court:       ₹25 lakh
         courtLevelMaxValue[3] = 10_000_000;        // District Court:  ₹1 crore
         courtLevelMaxValue[4] = type(uint256).max; // High Court:      unlimited
+    }
+
+    // ── Registry administration (separate from order signer roles) ───────────
+
+    function isAdmin(address account) external view returns (bool) {
+        return account == admin;
+    }
+
+    function proposeAdmin(address newAdmin) external onlyAdmin {
+        require(newAdmin != address(0), "Invalid admin");
+        require(newAdmin != admin, "Already admin");
+        require(registry[newAdmin].role == 0, "Admin cannot be a signer");
+        pendingAdmin = newAdmin;
+        emit AdminTransferProposed(admin, newAdmin);
+    }
+
+    function acceptAdmin() external {
+        require(msg.sender == pendingAdmin, "Not pending admin");
+        address oldAdmin = admin;
+        admin = msg.sender;
+        pendingAdmin = address(0);
+        emit AdminTransferred(oldAdmin, msg.sender);
     }
 
     // ── Territory management ──────────────────────────────────────────────────
@@ -192,6 +217,7 @@ contract CourtKeyRegistry {
         bytes32 territory,
         uint8 role
     ) external onlyAdmin {
+        require(signer != admin && signer != pendingAdmin, "Admin cannot be a signer");
         require(
             role == ROLE_JUDGE || role == ROLE_CLERK || role == ROLE_REGISTRAR,
             "Invalid role"

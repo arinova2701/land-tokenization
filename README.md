@@ -183,7 +183,7 @@ Results are written to `data/benchmark-results.json`.
 ### Portal 3 — Registrar Portal (`/registrar.html`)
 
 1. Open `http://localhost:3000/registrar.html`.
-2. The admin account address is shown at the top.
+2. Sign in with the separate **Registry Admin** wallet. The header shows that role; a Registrar signer has a read-only view.
 3. **Register a new judge** — paste a wallet address, enter court name, select court level and territory, set validity window (unix timestamps; use `0` and `9999999999` for always-valid), then click **Register Judge**.
 4. **Revoke a judge** — paste the judge's address into the address field and click **Revoke Judge**. Their next freeze attempt will fail at check 4.
 5. The **Registered Judges** section lists all known judges with active/revoked status and current nonce.
@@ -247,7 +247,8 @@ curl -s -X POST http://127.0.0.1:8545 \
 export FUNDER_KEY=<pre-funded-account-private-key>   # from genesis.json alloc
 export RPC_URL=http://127.0.0.1:8545
 node scripts/setup-demo-wallets.js
-# Creates demo-wallets.json with registrar, judge, clerk, citizen wallets.
+# Creates demo-wallets.json with separate admin, registrar, judge, clerk and citizen wallets.
+# If the first four already exist, only the admin wallet is added; do not use --force.
 # demo-wallets.json is git-ignored — never commit it.
 ```
 
@@ -260,8 +261,9 @@ npx hardhat run scripts/deploy-besu.js --network besu
 **Step 4 — Seed the demo data:**
 ```bash
 node scripts/seed-demo.js
-# Registers judge and clerk keys, sets pecuniary limits,
-# and creates three demo parcels (Token 4, 5, 6).
+# Registers judge, clerk and registrar signers, sets pecuniary limits,
+# creates three demo parcels (Tokens 4, 5, 6), then hands Registry Admin
+# rights from the deployer to the separate demo admin wallet.
 ```
 
 **Step 5 — Run the preflight check:**
@@ -277,8 +279,8 @@ node scripts/demo-check.js
    - RPC URL: `http://127.0.0.1:8545`
    - Chain ID: `1337`
    - Currency symbol: ETH
-3. Import each key from `demo-wallets.json` and rename the accounts **Registrar**, **Judge**, **Clerk**, **Citizen**.
-4. Use one Chrome profile per role to simulate independent signers.
+3. Import four browser accounts from `demo-wallets.json`: **Admin**, **Judge**, **Clerk**, **Registrar**. The Citizen page needs no wallet.
+4. Use one Chrome profile per account. Admin manages the registry in `registrar.html`; Judge, Clerk and Registrar sign orders in `court.html`. Admin never signs orders.
 
 **Step 7 — Serve the frontend:**
 ```bash

@@ -35,8 +35,8 @@ Claims are stated only where the implementation actually delivers them.
 ## Claim 4: Multi-court quorum is required (Step 1)
 
 **Evidence:**
-- `submitFreezeOrder` accepts `bytes[] calldata signatures`. At least `quorumThreshold` (default 2) signatures required.
-- At least 1 must be `ROLE_JUDGE`; at least 1 must be `ROLE_CLERK` or `ROLE_REGISTRAR`.
+- `submitFreezeOrder` accepts `bytes[] calldata signatures`. At least `quorumThreshold` (default 3) signatures are required.
+- Every accepted order has a JUDGE, a CLERK, and a REGISTRAR. The Registry Admin is not an order signer.
 - Duplicate signers rejected.
 - Supported by test cases 21–24.
 
@@ -69,9 +69,9 @@ Claims are stated only where the implementation actually delivers them.
 **Evidence:**
 - `HistoryEntry.checksBitmask uint256` stored on-chain for every accepted order.
 - `OrderAccepted` and `OrderVacated` events emit `checksBitmask`.
-- `getOrderChecks(...)` view function returns a bitmask of passing checks before submission (mirrors the 11-check freeze path).
-- Bitmask is 12 bits wide (bits 0–11): EXPIRY, REPLAY, RECOVER, NO_DUPE, REGISTRY, VALIDITY, JURISDICTION, QUORUM_JUDGE, QUORUM_COSIG, NONCE, PECUNIARY, FROZEN_STATE.
-- `submitFreezeOrder` sets bits 0–10 (11 checks); `submitUnfreezeOrder` sets bits 0–11 (12 checks, adding FROZEN_STATE at bit 11).
+- `getOrderChecks(...)` returns a bitmask of passing checks before submission for the selected freeze or unfreeze action.
+- The bitmask is 13 bits wide (bits 0–12), including separate CLERK and REGISTRAR quorum bits.
+- `submitFreezeOrder` records 12 checks; `submitUnfreezeOrder` records 13 checks, including FROZEN_STATE.
 - `getFreezeHistoryEntry` returns the stored bitmask alongside other fields.
 
 ---
@@ -84,6 +84,17 @@ Claims are stated only where the implementation actually delivers them.
 - `scripts/deploy-besu.js` — deploys both `ParcelToken` and `CourtKeyRegistry` to Besu.
 - `hardhat.config.js` — `besu` network target with `chainId: 1337` and `HARDHAT_KEYS`.
 - Prior benchmark run recorded in `data/benchmark-results.json` shows Besu QBFT ~2s block time (p50 ≈ 2030 ms).
+
+---
+
+## Claim 9: Registry administration is separated from order signing
+
+**Evidence:**
+- `CourtKeyRegistry.admin` controls signer registration, revocation, territory and value settings; `isAdmin(address)` exposes current authority.
+- `proposeAdmin` and `acceptAdmin` require two distinct steps and emit `AdminTransferred` on completion.
+- The contract prevents any current or pending admin from being registered as a signer, and prevents a registered signer from being proposed as admin.
+- The demo transfers admin rights from the deployer to a separate funded wallet. Admin permissions do not count toward the Judge, Clerk, Registrar order quorum.
+- Test cases 38–43 cover unauthorized writes, role separation, handover and loss of the old admin's rights.
 
 ---
 

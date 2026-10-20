@@ -41,6 +41,9 @@ const ADMIN_KEY = process.env.ADMIN_KEY ||
 
 const ABI = [
   "function admin() view returns (address)",
+  "function isAdmin(address) view returns (bool)",
+  "function proposeAdmin(address)",
+  "function acceptAdmin()",
   "function registry(address) view returns (string courtName, uint256 validFrom, uint256 validUntil, bool active, uint8 courtLevel, bytes32 territoryCode, uint8 role)",
   "function parcelDeclaredValue(uint256) view returns (uint256)",
   "function propertyTerritory(uint256) view returns (bytes32)",
@@ -58,6 +61,9 @@ async function main() {
     throw new Error("demo-wallets.json not found. Run scripts/setup-demo-wallets.js first.");
   }
   const wallets = JSON.parse(fs.readFileSync("demo-wallets.json", "utf8"));
+  if (!wallets.admin?.address || !wallets.admin?.privateKey) {
+    throw new Error("Demo admin wallet missing. Run scripts/setup-demo-wallets.js first.");
+  }
 
   // Load public/config.json
   if (!fs.existsSync("public/config.json")) {
@@ -80,7 +86,7 @@ async function main() {
       "Pass the correct admin private key via the ADMIN_KEY environment variable."
     );
   }
-  console.log("Admin:", adminSigner.address);
+  console.log("Deploy-time Registry Admin:", adminSigner.address);
 
   const vellore    = ethers.keccak256(ethers.toUtf8Bytes("vellore"));
   const kadapa     = ethers.keccak256(ethers.toUtf8Bytes("kadapa"));
@@ -181,6 +187,15 @@ async function main() {
     await (await contract.registerProperty(6, kadapa, 1_000_000)).wait();
     console.log("Parcel C (Token 6): Kadapa, ₹10L — registered (territorial failure case)");
   }
+
+  // Hand registry management to a wallet that is not an order signer.
+  const demoAdmin = new ethers.Wallet(wallets.admin.privateKey, provider);
+  await (await contract.proposeAdmin(demoAdmin.address)).wait();
+  await (await contract.connect(demoAdmin).acceptAdmin()).wait();
+  if (!(await contract.isAdmin(demoAdmin.address))) throw new Error("Registry Admin handover failed");
+  config.adminAddress = demoAdmin.address;
+  fs.writeFileSync("public/config.json", JSON.stringify(config, null, 2));
+  console.log("Registry Admin transferred to demo admin:", demoAdmin.address);
 
   console.log("\nSeed complete. Token IDs for the demo:");
   console.log("  Token 4 — Parcel A (Vellore, success case)");

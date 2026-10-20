@@ -20,15 +20,15 @@
  * Three-signer quorum (Sprint 0b):
  *   Every valid order requires exactly 1 JUDGE + 1 CLERK + 1 REGISTRAR.
  *   The fixture registers:
- *     admin         → ROLE_REGISTRAR (national co-signer, territory-exempt)
+ *     registrar     → ROLE_REGISTRAR (national co-signer, territory-exempt)
  *     judgeVellore  → ROLE_JUDGE,     level 3, territory Vellore
  *     judgeKadapa   → ROLE_JUDGE,     level 1, territory Kadapa
  *     clerkVellore  → ROLE_CLERK,     level 3, territory Vellore
  *     clerkKadapa   → ROLE_CLERK,     level 1, territory Kadapa
  *
  *   Valid 3-signer sets:
- *     Token 1/2 (Vellore/Chennai): [judgeVellore, clerkVellore, admin]
- *     Token 3   (Kadapa):          [judgeKadapa,  clerkKadapa,  admin]
+ *     Token 1/2 (Vellore/Chennai): [judgeVellore, clerkVellore, registrar]
+ *     Token 3   (Kadapa):          [judgeKadapa,  clerkKadapa,  registrar]
  *
  * Network compatibility note:
  *   hardhat-chai-matchers `revertedWith` works only on Hardhat's in-process chain.
@@ -107,7 +107,7 @@ function territoryCode(name) {
  *                               keccak256(bytes(caseNumber)), orderExpiry, nonce))
  *
  * @param {Signer[]} signers    Array of signers — all sign the same digest.
- *                              Valid orders: [judgeX, clerkX, admin].
+ *                              Valid orders: [judgeX, clerkX, registrar].
  *                              Negative-path tests may use subsets or bad signers.
  * @param {Contract} contract   The deployed CourtKeyRegistry instance (for address + chainId).
  */
@@ -188,20 +188,21 @@ async function deploy() {
     clerkKadapa.address, "Civil Court Kadapa Clerk", 0, oneYear, 1, kadapa, 2
   )).wait();
 
-  // Admin: Land Registry Authority — ROLE_REGISTRAR, national co-signer authority
+  // Separate registrar: national co-signer, never the Registry Admin
   // REGISTRAR is exempt from territorial jurisdiction checks.
+  const registrar = ethers.Wallet.createRandom();
   await (await c.registerJudge(
-    admin.address, "Land Registry Authority", 0, oneYear, 4, tamilNadu, 3
+    registrar.address, "Land Registry Authority", 0, oneYear, 4, tamilNadu, 3
   )).wait();
 
-  return { c, token, admin, judgeVellore, judgeKadapa, clerkVellore, clerkKadapa,
+  return { c, token, admin, registrar, judgeVellore, judgeKadapa, clerkVellore, clerkKadapa,
            outsider, attacker,
            vellore, chennai, tamilNadu, kadapa, andhraPradesh };
 }
 
 // ─── Suite ────────────────────────────────────────────────────────────────────
 
-describe("Negative Corpus (37 cases)", function () {
+describe("Negative Corpus (43 cases)", function () {
   this.timeout(600_000);
 
   // ── Case 1: Unregistered signer ───────────────────────────────────────────
@@ -209,9 +210,9 @@ describe("Negative Corpus (37 cases)", function () {
   // a multi-sig array is completely unregistered (cold storage read + early
   // revert), even though the receipt path works on Hardhat.
   it("Case 1 — unregistered signer is rejected", async function () {
-    const { c, admin, clerkVellore, outsider } = await deploy();
-    // outsider is unregistered; clerkVellore and admin are valid
-    const o = await makeOrder([outsider, clerkVellore, admin], 1, "CASE-1", 3600, "freeze", 0, c);
+    const { c, admin, registrar, clerkVellore, outsider } = await deploy();
+    // outsider is unregistered; clerkVellore and registrar are valid
+    const o = await makeOrder([outsider, clerkVellore, registrar], 1, "CASE-1", 3600, "freeze", 0, c);
     let caught = false;
     try {
       await c.submitFreezeOrder.staticCall(1, "CASE-1", o.expiry, 0, o.sigs);
@@ -227,9 +228,9 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 2: Revoked signer ────────────────────────────────────────────────
   it("Case 2 — revoked signer is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     await (await c.revokeJudge(judgeVellore.address)).wait();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-2", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-2", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-2", o.expiry, 0, o.sigs),
       "Unregistered or revoked signer"
@@ -240,12 +241,12 @@ describe("Negative Corpus (37 cases)", function () {
   // Uses staticCall: Besu's eth_estimateGas can hang on early-revert paths in
   // the signature loop for certain key validity states.
   it("Case 3 — expired judicial key is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore, vellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore, vellore } = await deploy();
     const past = Math.floor(Date.now() / 1000) - 100;
     await (await c.registerJudge(
       judgeVellore.address, "District Court Vellore", 0, past, 3, vellore, 1
     )).wait();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-3", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-3", 3600, "freeze", 0, c);
     let caught = false;
     try {
       await c.submitFreezeOrder.staticCall(1, "CASE-3", o.expiry, 0, o.sigs);
@@ -265,12 +266,12 @@ describe("Negative Corpus (37 cases)", function () {
   // the key invalid without the extreme far-future value that could also stall
   // Besu's eth_call simulation.
   it("Case 4 — not-yet-valid judicial key is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore, vellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore, vellore } = await deploy();
     const future = Math.floor(Date.now() / 1000) + 86400; // 24 h from now
     await (await c.registerJudge(
       judgeVellore.address, "District Court Vellore", future, future + 86400, 3, vellore, 1
     )).wait();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-4", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-4", 3600, "freeze", 0, c);
     let caught4 = false;
     try {
       await c.submitFreezeOrder.staticCall(1, "CASE-4", o.expiry, 0, o.sigs);
@@ -286,14 +287,14 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 5: Expired order ─────────────────────────────────────────────────
   it("Case 5 — expired order is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     const expiry = Math.floor(Date.now() / 1000) - 1;
     // Expiry check fires before signature verification; sigs are irrelevant here.
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-5", expiry, 0, chainId, await c.getAddress());
     const sig1 = await judgeVellore.signMessage(ethers.getBytes(hash));
     const sig2 = await clerkVellore.signMessage(ethers.getBytes(hash));
-    const sig3 = await admin.signMessage(ethers.getBytes(hash));
+    const sig3 = await registrar.signMessage(ethers.getBytes(hash));
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-5", expiry, 0, [sig1, sig2, sig3]),
       "Order has expired"
@@ -302,8 +303,8 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 6: Replay attack ─────────────────────────────────────────────────
   it("Case 6 — replay attack is rejected (usedOrders check)", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-6", 3600, "freeze", 0, c);
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-6", 3600, "freeze", 0, c);
     await (await c.submitFreezeOrder(1, "CASE-6", o.expiry, 0, o.sigs)).wait();
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-6", o.expiry, 0, o.sigs),
@@ -313,8 +314,8 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 7: Wrong nonce — skipped ────────────────────────────────────────
   it("Case 7 — skipped nonce is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-7", 3600, "freeze", 5, c);
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-7", 3600, "freeze", 5, c);
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-7", o.expiry, 5, o.sigs),
       "Invalid nonce"
@@ -323,10 +324,10 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 8: Wrong nonce — repeated ───────────────────────────────────────
   it("Case 8 — repeated nonce is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
-    const o1 = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-8a", 3600, "freeze", 0, c);
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
+    const o1 = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-8a", 3600, "freeze", 0, c);
     await (await c.submitFreezeOrder(1, "CASE-8a", o1.expiry, 0, o1.sigs)).wait();
-    const o2 = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-8b", 3600, "freeze", 0, c);
+    const o2 = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-8b", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-8b", o2.expiry, 0, o2.sigs),
       "Invalid nonce"
@@ -335,11 +336,11 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 9: Wrong jurisdiction — Vellore → Kadapa ────────────────────────
   it("Case 9 — Vellore judge cannot freeze Kadapa property", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     // judgeVellore has territory=vellore; token 3 is in kadapa
     // clerkVellore has territory=vellore; also fails for kadapa
-    // admin (REGISTRAR) is territory-exempt and passes
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 3, "CASE-9", 3600, "freeze", 0, c);
+    // registrar is territory-exempt and passes
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 3, "CASE-9", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(3, "CASE-9", o.expiry, 0, o.sigs),
       "Court lacks territorial jurisdiction over this property"
@@ -348,11 +349,11 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 10: Wrong jurisdiction — Kadapa → Vellore ───────────────────────
   it("Case 10 — Kadapa judge cannot freeze Vellore property", async function () {
-    const { c, admin, judgeKadapa, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeKadapa, clerkVellore } = await deploy();
     // judgeKadapa territory=Kadapa; token 1 is in Vellore
     // clerkVellore territory=Vellore — passes for token 1
     // But judgeKadapa fails first (checked in loop order)
-    const o = await makeOrder([judgeKadapa, clerkVellore, admin], 1, "CASE-10", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeKadapa, clerkVellore, registrar], 1, "CASE-10", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-10", o.expiry, 0, o.sigs),
       "Court lacks territorial jurisdiction over this property"
@@ -364,9 +365,9 @@ describe("Negative Corpus (37 cases)", function () {
   // for tokenId=2.  The contract re-derives the digest from (tokenId=2, …) and
   // the recovered addresses do not match any registered signer.
   it("Case 11 — tampered hash causes unregistered-signer rejection", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     const { expiry, sigs } = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-11", 3600, "freeze", 0, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-11", 3600, "freeze", 0, c
     );
     // Submit with tokenId=2 but signatures made for tokenId=1 → digest mismatch → wrong recovery
     await expectRevert(
@@ -377,56 +378,56 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 12: Empty signature ─────────────────────────────────────────────
   it("Case 12 — empty signature is rejected", async function () {
-    const { c, admin, clerkVellore } = await deploy();
+    const { c, admin, registrar, clerkVellore } = await deploy();
     const expiry = Math.floor(Date.now() / 1000) + 3600;
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-12", expiry, 0, chainId, await c.getAddress());
     const clerkSig = await clerkVellore.signMessage(ethers.getBytes(hash));
-    const adminSig = await admin.signMessage(ethers.getBytes(hash));
+    const registrarSig = await registrar.signMessage(ethers.getBytes(hash));
     // 3 sigs, first one is empty — fails at recovery
     await expectAnyRevert(
-      c.submitFreezeOrder(1, "CASE-12", expiry, 0, ["0x", clerkSig, adminSig])
+      c.submitFreezeOrder(1, "CASE-12", expiry, 0, ["0x", clerkSig, registrarSig])
     );
   });
 
   // ── Case 13: Malformed signature ─────────────────────────────────────────
   it("Case 13 — malformed signature (63 bytes) is rejected", async function () {
-    const { c, admin, clerkVellore } = await deploy();
+    const { c, admin, registrar, clerkVellore } = await deploy();
     const expiry = Math.floor(Date.now() / 1000) + 3600;
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-13", expiry, 0, chainId, await c.getAddress());
     const badSig   = "0x" + "ab".repeat(63);
     const clerkSig = await clerkVellore.signMessage(ethers.getBytes(hash));
-    const adminSig = await admin.signMessage(ethers.getBytes(hash));
+    const registrarSig = await registrar.signMessage(ethers.getBytes(hash));
     await expectAnyRevert(
-      c.submitFreezeOrder(1, "CASE-13", expiry, 0, [badSig, clerkSig, adminSig])
+      c.submitFreezeOrder(1, "CASE-13", expiry, 0, [badSig, clerkSig, registrarSig])
     );
   });
 
   // ── Case 14: Zero address recovery ──────────────────────────────────────
   it("Case 14 — signature recovering to zero address is rejected", async function () {
-    const { c, admin, clerkVellore } = await deploy();
+    const { c, admin, registrar, clerkVellore } = await deploy();
     const expiry = Math.floor(Date.now() / 1000) + 3600;
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-14", expiry, 0, chainId, await c.getAddress());
     const zeroSig  = "0x" + "00".repeat(64) + "1b"; // v=27, r=0, s=0
     const clerkSig = await clerkVellore.signMessage(ethers.getBytes(hash));
-    const adminSig = await admin.signMessage(ethers.getBytes(hash));
+    const registrarSig = await registrar.signMessage(ethers.getBytes(hash));
     await expectAnyRevert(
-      c.submitFreezeOrder(1, "CASE-14", expiry, 0, [zeroSig, clerkSig, adminSig])
+      c.submitFreezeOrder(1, "CASE-14", expiry, 0, [zeroSig, clerkSig, registrarSig])
     );
   });
 
   // ── Case 15: Freeze already-frozen token ─────────────────────────────────
   // Design decision: a second authenticated freeze IS accepted (dual-court freeze).
   it("Case 15 — freezing an already-frozen token is accepted (dual-court freeze)", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
-    const o1 = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-15a", 3600, "freeze", 0, c);
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
+    const o1 = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-15a", 3600, "freeze", 0, c);
     await (await c.submitFreezeOrder(1, "CASE-15a", o1.expiry, 0, o1.sigs)).wait();
 
     expect(await c.frozen(1)).to.equal(true);
 
-    const o2 = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-15b", 3600, "freeze", 1, c);
+    const o2 = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-15b", 3600, "freeze", 1, c);
     await (await c.submitFreezeOrder(1, "CASE-15b", o2.expiry, 1, o2.sigs)).wait();
 
     expect(await c.frozenBy(1)).to.equal("CASE-15b");
@@ -435,8 +436,8 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 16: Unfreeze non-frozen token ───────────────────────────────────
   it("Case 16 — unfreezing a non-frozen token is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-16", 3600, "unfreeze", 0, c);
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-16", 3600, "unfreeze", 0, c);
     await expectRevert(
       c.submitUnfreezeOrder(1, "CASE-16", o.expiry, 0, o.sigs),
       "Token is not frozen"
@@ -445,14 +446,14 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 17: Unfreeze — wrong jurisdiction ───────────────────────────────
   it("Case 17 — Kadapa judge cannot unfreeze Vellore property", async function () {
-    const { c, admin, judgeVellore, judgeKadapa, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, judgeKadapa, clerkVellore } = await deploy();
     const fo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-17-freeze", 3600, "freeze", 0, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-17-freeze", 3600, "freeze", 0, c
     );
     await (await c.submitFreezeOrder(1, "CASE-17-freeze", fo.expiry, 0, fo.sigs)).wait();
     // judgeKadapa has territory=Kadapa, token 1 is Vellore → jurisdiction fail
     const uo = await makeOrder(
-      [judgeKadapa, clerkVellore, admin], 1, "CASE-17-unfreeze", 3600, "unfreeze", 0, c
+      [judgeKadapa, clerkVellore, registrar], 1, "CASE-17-unfreeze", 3600, "unfreeze", 0, c
     );
     await expectRevert(
       c.submitUnfreezeOrder(1, "CASE-17-unfreeze", uo.expiry, 0, uo.sigs),
@@ -462,14 +463,14 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 18: Unfreeze — revoked signer ───────────────────────────────────
   it("Case 18 — revoked signer cannot unfreeze", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     const fo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-18-freeze", 3600, "freeze", 0, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-18-freeze", 3600, "freeze", 0, c
     );
     await (await c.submitFreezeOrder(1, "CASE-18-freeze", fo.expiry, 0, fo.sigs)).wait();
     await (await c.revokeJudge(judgeVellore.address)).wait();
     const uo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-18-unfreeze", 3600, "unfreeze", 1, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-18-unfreeze", 3600, "unfreeze", 1, c
     );
     await expectRevert(
       c.submitUnfreezeOrder(1, "CASE-18-unfreeze", uo.expiry, 1, uo.sigs),
@@ -479,19 +480,19 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 19: Unfreeze replay ─────────────────────────────────────────────
   it("Case 19 — unfreeze replay is rejected (usedOrders check)", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     const fo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-19-freeze", 3600, "freeze", 0, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-19-freeze", 3600, "freeze", 0, c
     );
     await (await c.submitFreezeOrder(1, "CASE-19-freeze", fo.expiry, 0, fo.sigs)).wait();
 
     const uo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-19-unfreeze", 3600, "unfreeze", 1, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-19-unfreeze", 3600, "unfreeze", 1, c
     );
     await (await c.submitUnfreezeOrder(1, "CASE-19-unfreeze", uo.expiry, 1, uo.sigs)).wait();
 
     const fo2 = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-19-freeze2", 3600, "freeze", 2, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-19-freeze2", 3600, "freeze", 2, c
     );
     await (await c.submitFreezeOrder(1, "CASE-19-freeze2", fo2.expiry, 2, fo2.sigs)).wait();
 
@@ -503,13 +504,13 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 20: Wrong nonce on unfreeze ─────────────────────────────────────
   it("Case 20 — wrong nonce on unfreeze is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     const fo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-20-freeze", 3600, "freeze", 0, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-20-freeze", 3600, "freeze", 0, c
     );
     await (await c.submitFreezeOrder(1, "CASE-20-freeze", fo.expiry, 0, fo.sigs)).wait();
     const uo = await makeOrder(
-      [judgeVellore, clerkVellore, admin], 1, "CASE-20-unfreeze", 3600, "unfreeze", 99, c
+      [judgeVellore, clerkVellore, registrar], 1, "CASE-20-unfreeze", 3600, "unfreeze", 99, c
     );
     await expectRevert(
       c.submitUnfreezeOrder(1, "CASE-20-unfreeze", uo.expiry, 99, uo.sigs),
@@ -538,7 +539,7 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 22: Duplicate signer ─────────────────────────────────────────────
   it("Case 22 — duplicate signer is rejected", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     const expiry = Math.floor(Date.now() / 1000) + 3600;
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-22", expiry, 0, chainId, await c.getAddress());
@@ -553,7 +554,7 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 23: Wrong role — no JUDGE in the signature set ──────────────────
   it("Case 23 — no JUDGE role among signers is rejected", async function () {
-    const { c, admin, clerkVellore, outsider, vellore } = await deploy();
+    const { c, admin, registrar, clerkVellore, outsider, vellore } = await deploy();
     const now = Math.floor(Date.now() / 1000);
     // Register outsider as ROLE_CLERK — a second CLERK
     await (await c.registerJudge(
@@ -563,11 +564,11 @@ describe("Negative Corpus (37 cases)", function () {
     const expiry = Math.floor(Date.now() / 1000) + 3600;
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-23", expiry, 0, chainId, await c.getAddress());
-    const adminSig    = await admin.signMessage(ethers.getBytes(hash));
+    const registrarSig    = await registrar.signMessage(ethers.getBytes(hash));
     const clerkSig    = await clerkVellore.signMessage(ethers.getBytes(hash));
     const outsiderSig = await outsider.signMessage(ethers.getBytes(hash));
     await expectRevert(
-      c.submitFreezeOrder(1, "CASE-23", expiry, 0, [adminSig, clerkSig, outsiderSig]),
+      c.submitFreezeOrder(1, "CASE-23", expiry, 0, [registrarSig, clerkSig, outsiderSig]),
       "At least one JUDGE signature required"
     );
   });
@@ -585,11 +586,11 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 25: Declared value above court pecuniary limit ───────────────────
   it("Case 25 — declared value above court pecuniary limit is rejected", async function () {
-    const { c, admin, judgeKadapa, clerkKadapa } = await deploy();
+    const { c, admin, registrar, judgeKadapa, clerkKadapa } = await deploy();
     // judgeKadapa is Munsif (level 1, max ₹3 lakh)
     // Override token 3's declared value to ₹50 lakh — exceeds the limit
     await (await c.setParcelDeclaredValue(3, 5_000_000)).wait();
-    const o = await makeOrder([judgeKadapa, clerkKadapa, admin], 3, "CASE-25", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeKadapa, clerkKadapa, registrar], 3, "CASE-25", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(3, "CASE-25", o.expiry, 0, o.sigs),
       "Parcel value exceeds court pecuniary limit"
@@ -613,9 +614,9 @@ describe("Negative Corpus (37 cases)", function () {
   // deterministic accounts used in all other cases.  This gives the demo flow
   // direct automated test coverage.
   //
-  // Sprint 0b: three signers — JUDGE + CLERK + REGISTRAR (admin).
+  // Sprint 0b: three signers — JUDGE + CLERK + REGISTRAR (separate signer).
   it("Case 27 — three-signer submit succeeds with demo-style random wallets", async function () {
-    const { c, token, admin } = await deploy();
+    const { c, token, admin, registrar } = await deploy();
 
     // Create fresh random wallets, fund them from admin, and wire them up
     const provider = ethers.provider;
@@ -631,7 +632,7 @@ describe("Negative Corpus (37 cases)", function () {
     const now     = Math.floor(Date.now() / 1000);
     await (await c.registerJudge(judgeW.address, "Demo District Court",  0, now + 86400, 3, vellore, 1)).wait();
     await (await c.registerJudge(clerkW.address,  "Demo Clerk Office",   0, now + 86400, 3, vellore, 2)).wait();
-    // admin is already ROLE_REGISTRAR from the fixture
+    // registrar is already ROLE_REGISTRAR from the fixture
 
     // Build and sign the freeze order (JUDGE + CLERK + REGISTRAR)
     const expiry = Math.floor(Date.now() / 1000) + 3600;
@@ -640,11 +641,11 @@ describe("Negative Corpus (37 cases)", function () {
     const orderHash = NyayaDigest.compute("freeze", 1, "DEMO-CASE-27", expiry, 0, chainId, contractAddress);
     const judgeSig  = await judgeW.signMessage(ethers.getBytes(orderHash));
     const clerkSig  = await clerkW.signMessage(ethers.getBytes(orderHash));
-    const adminSig  = await admin.signMessage(ethers.getBytes(orderHash));
+    const registrarSig  = await registrar.signMessage(ethers.getBytes(orderHash));
 
     // Submit — must succeed
     const tx = await c.connect(judgeW).submitFreezeOrder(
-      1, "DEMO-CASE-27", expiry, 0, [judgeSig, clerkSig, adminSig]
+      1, "DEMO-CASE-27", expiry, 0, [judgeSig, clerkSig, registrarSig]
     );
     await tx.wait();
 
@@ -659,10 +660,10 @@ describe("Negative Corpus (37 cases)", function () {
     const hash2     = NyayaDigest.compute("unfreeze", 1, "DEMO-CASE-27-UNFREEZE", expiry, 1, chainId, contractAddress);
     const judgeSig2 = await judgeW.signMessage(ethers.getBytes(hash2));
     const clerkSig2 = await clerkW.signMessage(ethers.getBytes(hash2));
-    const adminSig2 = await admin.signMessage(ethers.getBytes(hash2));
+    const registrarSig2 = await registrar.signMessage(ethers.getBytes(hash2));
 
     const tx2 = await c.connect(judgeW).submitUnfreezeOrder(
-      1, "DEMO-CASE-27-UNFREEZE", expiry, 1, [judgeSig2, clerkSig2, adminSig2]
+      1, "DEMO-CASE-27-UNFREEZE", expiry, 1, [judgeSig2, clerkSig2, registrarSig2]
     );
     await tx2.wait();
 
@@ -676,9 +677,9 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 28: Missing CLERK (JUDGE + REGISTRAR × 2, no CLERK) ─────────────
   it("Case 28 — missing CLERK: JUDGE + two REGISTRARs is rejected", async function () {
-    const { c, admin, judgeVellore, outsider, tamilNadu } = await deploy();
+    const { c, admin, registrar, judgeVellore, outsider, tamilNadu } = await deploy();
     const now = Math.floor(Date.now() / 1000);
-    // Register outsider as ROLE_REGISTRAR (territory-exempt, like admin)
+    // Register outsider as ROLE_REGISTRAR (territory-exempt, like the fixture registrar)
     await (await c.registerJudge(
       outsider.address, "National Registry Authority 2", 0, now + 86400, 4, tamilNadu, 3
     )).wait();
@@ -687,10 +688,10 @@ describe("Negative Corpus (37 cases)", function () {
     const { chainId } = await ethers.provider.getNetwork();
     const hash = NyayaDigest.compute("freeze", 1, "CASE-28", expiry, 0, chainId, await c.getAddress());
     const judgeSig    = await judgeVellore.signMessage(ethers.getBytes(hash));
-    const adminSig    = await admin.signMessage(ethers.getBytes(hash));
+    const registrarSig    = await registrar.signMessage(ethers.getBytes(hash));
     const outsiderSig = await outsider.signMessage(ethers.getBytes(hash));
     await expectRevert(
-      c.submitFreezeOrder(1, "CASE-28", expiry, 0, [judgeSig, adminSig, outsiderSig]),
+      c.submitFreezeOrder(1, "CASE-28", expiry, 0, [judgeSig, registrarSig, outsiderSig]),
       "At least one CLERK signature required"
     );
   });
@@ -718,7 +719,7 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 30: Two JUDGEs, no CLERK (JUDGE + JUDGE + REGISTRAR) ────────────
   it("Case 30 — two JUDGEs with no CLERK is rejected", async function () {
-    const { c, admin, judgeVellore, outsider, vellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, outsider, vellore } = await deploy();
     const now = Math.floor(Date.now() / 1000);
     // Register outsider as ROLE_JUDGE, territory Vellore
     await (await c.registerJudge(
@@ -730,9 +731,9 @@ describe("Negative Corpus (37 cases)", function () {
     const hash = NyayaDigest.compute("freeze", 1, "CASE-30", expiry, 0, chainId, await c.getAddress());
     const judgeSig    = await judgeVellore.signMessage(ethers.getBytes(hash));
     const outsiderSig = await outsider.signMessage(ethers.getBytes(hash));
-    const adminSig    = await admin.signMessage(ethers.getBytes(hash));
+    const registrarSig    = await registrar.signMessage(ethers.getBytes(hash));
     await expectRevert(
-      c.submitFreezeOrder(1, "CASE-30", expiry, 0, [judgeSig, outsiderSig, adminSig]),
+      c.submitFreezeOrder(1, "CASE-30", expiry, 0, [judgeSig, outsiderSig, registrarSig]),
       "At least one CLERK signature required"
     );
   });
@@ -746,9 +747,9 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 31: Bundle reused with a different tokenId ───────────────────────
   it("Case 31 — valid bundle rejected when tokenId differs", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     // Sign for tokenId=1; try to submit for tokenId=2.
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-31", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-31", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(2, "CASE-31", o.expiry, 0, o.sigs),
       "Unregistered or revoked signer"
@@ -757,8 +758,8 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 32: Bundle reused with a different orderExpiry ───────────────────
   it("Case 32 — valid bundle rejected when orderExpiry differs", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-32", 3600, "freeze", 0, c);
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-32", 3600, "freeze", 0, c);
     const altExpiry = o.expiry + 60; // 1 minute later
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-32", altExpiry, 0, o.sigs),
@@ -768,12 +769,12 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 33: Bundle reused with a different action ────────────────────────
   it("Case 33 — valid freeze bundle rejected when submitted as unfreeze", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     // First freeze the token so the unfreeze attempt can reach the sig check.
-    const fo = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-33-freeze", 3600, "freeze", 0, c);
+    const fo = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-33-freeze", 3600, "freeze", 0, c);
     await (await c.submitFreezeOrder(1, "CASE-33-freeze", fo.expiry, 0, fo.sigs)).wait();
     // Re-sign for freeze action but submit as unfreeze.
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-33", 3600, "freeze", 1, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-33", 3600, "freeze", 1, c);
     await expectRevert(
       c.submitUnfreezeOrder(1, "CASE-33", o.expiry, 1, o.sigs),
       "Unregistered or revoked signer"
@@ -782,9 +783,9 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 34: Bundle reused with a different nonce ─────────────────────────
   it("Case 34 — valid bundle rejected when nonce differs", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     // Sign with nonce=0; submit claiming nonce=1.
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-34", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-34", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-34", o.expiry, 1, o.sigs),
       "Unregistered or revoked signer"
@@ -793,9 +794,9 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 35: Bundle reused with a different caseNumber ────────────────────
   it("Case 35 — valid bundle rejected when caseNumber differs", async function () {
-    const { c, admin, judgeVellore, clerkVellore } = await deploy();
+    const { c, admin, registrar, judgeVellore, clerkVellore } = await deploy();
     // Sign for "CASE-35-A"; submit with "CASE-35-B".
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-35-A", 3600, "freeze", 0, c);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-35-A", 3600, "freeze", 0, c);
     await expectRevert(
       c.submitFreezeOrder(1, "CASE-35-B", o.expiry, 0, o.sigs),
       "Unregistered or revoked signer"
@@ -804,7 +805,7 @@ describe("Negative Corpus (37 cases)", function () {
 
   // ── Case 36: Bundle submitted against a second deployed registry ──────────
   it("Case 36 — valid bundle rejected against a different contract address", async function () {
-    const { c: c1, admin, judgeVellore, clerkVellore,
+    const { c: c1, admin, registrar, judgeVellore, clerkVellore,
             vellore, tamilNadu, kadapa, andhraPradesh, chennai } = await deploy();
     // Deploy a second identical registry with the same registered signers.
     const TokenFactory2 = await ethers.getContractFactory("ParcelToken");
@@ -823,9 +824,9 @@ describe("Negative Corpus (37 cases)", function () {
     const now = Math.floor(Date.now() / 1000);
     await (await c2.registerJudge(judgeVellore.address, "District Court Vellore", 0, now + 86400, 3, vellore, 1)).wait();
     await (await c2.registerJudge(clerkVellore.address, "District Court Vellore Clerk", 0, now + 86400, 3, vellore, 2)).wait();
-    await (await c2.registerJudge(admin.address, "Land Registry Authority", 0, now + 86400, 4, tamilNadu, 3)).wait();
+    await (await c2.registerJudge(registrar.address, "Land Registry Authority", 0, now + 86400, 4, tamilNadu, 3)).wait();
     // Sign for c1; submit to c2 — digest includes address(c1) so recovery yields garbage.
-    const o = await makeOrder([judgeVellore, clerkVellore, admin], 1, "CASE-36", 3600, "freeze", 0, c1);
+    const o = await makeOrder([judgeVellore, clerkVellore, registrar], 1, "CASE-36", 3600, "freeze", 0, c1);
     await expectRevert(
       c2.submitFreezeOrder(1, "CASE-36", o.expiry, 0, o.sigs),
       "Unregistered or revoked signer"
@@ -853,6 +854,67 @@ describe("Negative Corpus (37 cases)", function () {
         );
       }
     }
+  });
+
+  // Registry Admin is an administrative account, never an order signer.
+  it("Case 38 — non-admin cannot manage signers, limits or declared values", async function () {
+    const { c, judgeVellore, attacker, vellore } = await deploy();
+    const unauthorized = c.connect(judgeVellore);
+    const until = Math.floor(Date.now() / 1000) + 86400;
+    await expectRevert(unauthorized.registerJudge(attacker.address, "Other", 0, until, 3, vellore, 2), "Not admin");
+    await expectRevert(unauthorized.revokeJudge(judgeVellore.address), "Not admin");
+    await expectRevert(unauthorized.setCourtLevelMaxValue(3, 1), "Not admin");
+    await expectRevert(unauthorized.setParcelDeclaredValue(1, 1), "Not admin");
+  });
+
+  it("Case 39 — current admin cannot be registered as an order signer", async function () {
+    const { c, admin, vellore } = await deploy();
+    const until = Math.floor(Date.now() / 1000) + 86400;
+    await expectRevert(c.registerJudge(admin.address, "Admin", 0, until, 3, vellore, 3), "Admin cannot be a signer");
+    expect((await c.registry(admin.address)).active).to.equal(false);
+  });
+
+  it("Case 40 — pending admin cannot be registered as an order signer", async function () {
+    const { c, outsider, vellore } = await deploy();
+    await (await c.proposeAdmin(outsider.address)).wait();
+    const until = Math.floor(Date.now() / 1000) + 86400;
+    await expectRevert(c.registerJudge(outsider.address, "Pending", 0, until, 3, vellore, 3), "Admin cannot be a signer");
+  });
+
+  it("Case 41 — a registered signer cannot be proposed as admin", async function () {
+    const { c, registrar } = await deploy();
+    await expectRevert(c.proposeAdmin(registrar.address), "Admin cannot be a signer");
+  });
+
+  it("Case 42 — only the proposed address can accept the two-step handover", async function () {
+    const { c, admin, outsider, attacker } = await deploy();
+    expect(await c.isAdmin(admin.address)).to.equal(true);
+    await (await c.proposeAdmin(outsider.address)).wait();
+    expect(await c.pendingAdmin()).to.equal(outsider.address);
+    await expectAnyRevert(c.connect(attacker).acceptAdmin());
+    expect(await c.admin()).to.equal(admin.address);
+    const receipt = await (await c.connect(outsider).acceptAdmin()).wait();
+    const transfer = receipt.logs.map(log => { try { return c.interface.parseLog(log); } catch { return null; } })
+      .find(log => log?.name === "AdminTransferred");
+    expect(transfer.args.oldAdmin).to.equal(admin.address);
+    expect(transfer.args.newAdmin).to.equal(outsider.address);
+    expect(await c.admin()).to.equal(outsider.address);
+    expect(await c.pendingAdmin()).to.equal(ethers.ZeroAddress);
+    expect(await c.isAdmin(outsider.address)).to.equal(true);
+  });
+
+  it("Case 43 — old admin loses every admin permission after handover", async function () {
+    const { c, admin, outsider, attacker, vellore } = await deploy();
+    await (await c.proposeAdmin(outsider.address)).wait();
+    await (await c.connect(outsider).acceptAdmin()).wait();
+    expect(await c.isAdmin(admin.address)).to.equal(false);
+    await expectRevert(c.registerJudge(attacker.address, "Other", 0, 9999999999, 3, vellore, 2), "Not admin");
+    await expectRevert(c.revokeJudge(outsider.address), "Not admin");
+    await expectRevert(c.setCourtLevelMaxValue(3, 1), "Not admin");
+    await expectRevert(c.setParcelDeclaredValue(1, 1), "Not admin");
+    await expectRevert(c.proposeAdmin(attacker.address), "Not admin");
+    await (await c.connect(outsider).setParcelDeclaredValue(1, 6_000_000)).wait();
+    expect(await c.parcelDeclaredValue(1)).to.equal(6_000_000n);
   });
 
 });
