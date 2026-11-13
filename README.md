@@ -61,7 +61,7 @@ land-tokenization/
 │   ├── deploy-besu.js             # Deploy + seed to Besu
 │   └── benchmark.js               # 100-tx latency benchmark (both networks)
 ├── test/
-│   └── negative-corpus.js         # 43 test cases (42 rejection paths + 1 happy path)
+│   └── negative-corpus.js         # 43 test cases (40 rejection paths + 3 acceptance checks)
 ├── docker/
 │   ├── docker-compose.yml         # 4-node Besu QBFT cluster
 │   ├── genesis.json               # Genesis with pre-funded Hardhat accounts
