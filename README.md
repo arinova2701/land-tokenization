@@ -84,7 +84,7 @@ land-tokenization/
 
 ## Prerequisites
 
-- Node.js ≥ 18
+- Node.js v22
 - npm
 - Docker + Docker Compose (for Besu)
 
@@ -316,19 +316,19 @@ npm run serve
 
 ## Benchmark Results
 
-100 consecutive freeze transactions on each network. Recorded in `data/benchmark-results.json`.
+100 consecutive freeze transactions on each network. Recorded in `data/benchmark-results.json` under keys `localhost` and `besu_three_signer`.
 
-| Metric | Hardhat localhost (Chain ID 31337) | Besu QBFT multi-signer (Chain ID 1337) |
+| Metric | Hardhat localhost (Chain ID 31337) | Besu QBFT three-signer (Chain ID 1337) |
 |--------|-----------------------------------|-----------------------------------------|
-| Min latency | 1 ms | 1,528 ms |
-| Max latency | 6 ms | 2,056 ms |
-| Average | 2 ms | 1,999 ms |
-| Median (p50) | 2 ms | 2,039 ms |
-| p95 | 3 ms | 2,051 ms |
-| p99 | 3 ms | 2,054 ms |
+| Min latency | 1 ms | 1,535 ms |
+| Max latency | 6 ms | 2,579 ms |
+| Average | 2 ms | 1,994 ms |
+| Median (p50) | 2 ms | 2,051 ms |
+| p95 | 3 ms | 2,076 ms |
+| p99 | 3 ms | 2,110 ms |
 | Transactions | 100 | 100 |
 
-All Besu results use multi-signer orders (JUDGE + REGISTRAR co-signature), matching the production quorum requirement. Legacy single-signer Besu results are retained in `data/benchmark-results.json` under `besu_single_signer_legacy` for comparison.
+All Besu results use three-signer orders (JUDGE + CLERK + REGISTRAR), matching the production quorum requirement. Legacy single-signer and two-signer Besu results are retained in `data/benchmark-results.json` under `besu_single_signer_legacy` and `besu_multi_signer` for comparison.
 
 Hardhat's in-process node mines instantly, giving sub-10ms round-trips. Besu QBFT operates with a ~2s block time by consensus protocol design, placing all latencies in the 1.5–2.1s range. The tight p95/p99 spread on Besu (3ms) indicates consistent block production with no outlier blocks during the test run.
 
@@ -349,15 +349,31 @@ Documents sourced from eCourts and official court portals. Case numbers, court h
 
 ---
 
+## Security Note — Test Keys Only
+
+All private keys present in this repository (Hardhat default accounts in `hardhat.config.js`, Besu validator node keys in `docker/nodes/`, and any keys shown in documentation) are **test-only keys for a local development chain with no monetary value**. They are publicly known and must never be used on any public network or wallet holding real funds. The runtime demo wallets (`demo-wallets.json`) are git-ignored and must be generated fresh for each demo run.
+
+---
+
+## How to Cite
+
+If you use this software or build on it, please cite:
+
+> Maneesh Ari, Niharika Lathish, Vijay V S, and Antony Seba P. "NyayaChain: A Judicially-Authenticated Freeze Protocol for Tokenized Land Records." 2026. DOI: [10.5281/zenodo.XXXXXXX](https://doi.org/10.5281/zenodo.XXXXXXX)
+
+A `CITATION.cff` file is included in the root of this repository for automated citation tools (Zenodo, GitHub's Cite This Repository button, Zotero, etc.). Replace `10.5281/zenodo.XXXXXXX` with the actual DOI once the Zenodo record is published.
+
+---
+
 ## Team
 
 | Name | Role |
 |------|------|
-| **Maneesh Arinova** | Smart contract architecture, deployment scripting, frontend development, system integration |
-| **Niharika** | Court hierarchy mapping, jurisdiction policy design, legal domain research |
-| **Vijay** | Testing, negative corpus design, Besu deployment and benchmarking |
+| **Maneesh Ari** | Smart contract architecture, deployment scripting, frontend development, system integration |
+| **Niharika Lathish** | Court hierarchy mapping, jurisdiction policy design, legal domain research |
+| **Vijay V S** | Testing, negative corpus design, Besu deployment and benchmarking |
 
-**Project Guide:** Dr. Anthony Seba P.
+**Project Guide:** Dr. Antony Seba P.
 
 ---
 

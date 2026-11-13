@@ -1,0 +1,50 @@
+
+
+  Negative Corpus (43 cases)
+    ✔ Case 1 — unregistered signer is rejected (380ms)
+    ✔ Case 2 — revoked signer is rejected
+    ✔ Case 3 — expired judicial key is rejected
+    ✔ Case 4 — not-yet-valid judicial key is rejected
+    ✔ Case 5 — expired order is rejected
+    ✔ Case 6 — replay attack is rejected (usedOrders check)
+    ✔ Case 7 — skipped nonce is rejected
+    ✔ Case 8 — repeated nonce is rejected
+    ✔ Case 9 — Vellore judge cannot freeze Kadapa property
+    ✔ Case 10 — Kadapa judge cannot freeze Vellore property
+    ✔ Case 11 — tampered hash causes unregistered-signer rejection
+    ✔ Case 12 — empty signature is rejected
+    ✔ Case 13 — malformed signature (63 bytes) is rejected
+    ✔ Case 14 — signature recovering to zero address is rejected
+    ✔ Case 15 — freezing an already-frozen token is accepted (dual-court freeze)
+    ✔ Case 16 — unfreezing a non-frozen token is rejected
+    ✔ Case 17 — Kadapa judge cannot unfreeze Vellore property
+    ✔ Case 18 — revoked signer cannot unfreeze
+    ✔ Case 19 — unfreeze replay is rejected (usedOrders check)
+    ✔ Case 20 — wrong nonce on unfreeze is rejected
+    ✔ Case 21 — missing co-signer: only JUDGE signature is rejected
+    ✔ Case 22 — duplicate signer is rejected
+    ✔ Case 23 — no JUDGE role among signers is rejected
+    ✔ Case 24 — empty signatures array is rejected
+    ✔ Case 25 — declared value above court pecuniary limit is rejected
+    ✔ Case 26 — ParcelToken.setAddressFrozen reverts when caller is not agent
+    ✔ Case 27 — three-signer submit succeeds with demo-style random wallets (39ms)
+    ✔ Case 28 — missing CLERK: JUDGE + two REGISTRARs is rejected
+    ✔ Case 29 — missing REGISTRAR: JUDGE + two CLERKs is rejected
+    ✔ Case 30 — two JUDGEs with no CLERK is rejected
+    ✔ Case 31 — valid bundle rejected when tokenId differs
+    ✔ Case 32 — valid bundle rejected when orderExpiry differs
+    ✔ Case 33 — valid freeze bundle rejected when submitted as unfreeze
+    ✔ Case 34 — valid bundle rejected when nonce differs
+    ✔ Case 35 — valid bundle rejected when caseNumber differs
+    ✔ Case 36 — valid bundle rejected against a different contract address
+    ✔ Case 37 — NyayaDigest.compute matches contract computeOrderDigest
+    ✔ Case 38 — non-admin cannot manage signers, limits or declared values
+    ✔ Case 39 — current admin cannot be registered as an order signer
+    ✔ Case 40 — pending admin cannot be registered as an order signer
+    ✔ Case 41 — a registered signer cannot be proposed as admin
+    ✔ Case 42 — only the proposed address can accept the two-step handover
+    ✔ Case 43 — old admin loses every admin permission after handover
+
+
+  43 passing (1s)
+

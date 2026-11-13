@@ -1,11 +1,14 @@
 node_modules/
 artifacts/
 cache/
+coverage/
 .DS_Store
 demo-wallets.json
 .env
+.env*
 *.keystore
 keystore/
 besu-data/
 data/pending-orders.json
 public/config.json
+Claude outputs/

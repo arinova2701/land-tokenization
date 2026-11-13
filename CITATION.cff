@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "NyayaChain: A Judicially-Authenticated Freeze Protocol for Tokenized Land Records"
+version: 1.0.0
+date-released: 2026-11-13
+license: MIT
+repository-code: "https://github.com/arinova2701/land-tokenization"
+doi: "10.5281/zenodo.XXXXXXX"
+keywords:
+  - ERC-3643
+  - Hyperledger Besu
+  - land tokenization
+  - court injunction
+  - smart contracts
+authors:
+  - family-names: Ari
+    given-names: Maneesh
+    affiliation: "Vellore Institute of Technology"
+  - family-names: Lathish
+    given-names: Niharika
+    affiliation: "Vellore Institute of Technology"
+  - family-names: "V S"
+    given-names: Vijay
+    affiliation: "Vellore Institute of Technology"
+  - family-names: "Seba P"
+    given-names: Antony
+    affiliation: "Vellore Institute of Technology"
+abstract: >
+  NyayaChain is a permissioned blockchain system for recording and verifying
+  court-ordered property freeze orders on tokenized land records. Built on
+  Hyperledger Besu with a 4-node QBFT consensus cluster, it performs 11–12
+  sequential on-chain verification checks per freeze/unfreeze order, including
+  ECDSA signature validation, territorial jurisdiction, judicial key validity
+  windows, and sequential nonce enforcement. The system demonstrates
+  sub-2.1-second median confirmation latency for a three-signer quorum on a
+  local permissioned network.
