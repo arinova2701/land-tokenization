@@ -61,7 +61,7 @@ land-tokenization/
 │   ├── deploy-besu.js             # Deploy + seed to Besu
 │   └── benchmark.js               # 100-tx latency benchmark (both networks)
 ├── test/
-│   └── negative-corpus.js         # 27 test cases (26 rejection paths + 1 happy path)
+│   └── negative-corpus.js         # 43 test cases (42 rejection paths + 1 happy path)
 ├── docker/
 │   ├── docker-compose.yml         # 4-node Besu QBFT cluster
 │   ├── genesis.json               # Genesis with pre-funded Hardhat accounts
@@ -148,7 +148,7 @@ docker compose -f docker/docker-compose.yml down -v
 npx hardhat test test/negative-corpus.js
 ```
 
-**On Besu (slow — 2s block time × ~10 tx/setup × 27 tests ≈ 14 min; cluster must be running):**
+**On Besu (slow — 2s block time × ~10 tx/setup × 43 tests ≈ 24 min; cluster must be running):**
 ```bash
 npx hardhat test test/negative-corpus.js --network besu
 ```

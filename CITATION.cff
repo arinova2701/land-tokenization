@@ -26,11 +26,29 @@ authors:
     given-names: Antony
     affiliation: "Vellore Institute of Technology"
 abstract: >
-  NyayaChain is a permissioned blockchain system for recording and verifying
-  court-ordered property freeze orders on tokenized land records. Built on
-  Hyperledger Besu with a 4-node QBFT consensus cluster, it performs 11–12
-  sequential on-chain verification checks per freeze/unfreeze order, including
-  ECDSA signature validation, territorial jurisdiction, judicial key validity
-  windows, and sequential nonce enforcement. The system demonstrates
-  sub-2.1-second median confirmation latency for a three-signer quorum on a
-  local permissioned network.
+  When a plot of land is converted into a token, a court order that prevents
+  the sale of the property must be made into an action on the blockchain. Token
+  standards for regulated tokens (such as ERC-3643) currently allow a token to
+  be frozen; however, these standards do not address who will decide to trigger
+  this freeze. Currently, this decision is left up to a single administrative
+  "key," so whoever possesses (or misuses or steals) this "key" can arbitrarily
+  freeze or unfreeze land regardless of whether a valid court order exists. To
+  provide additional security against unauthorized freezing/unfreezing of land
+  by administrators, we are presenting CourtKeyRegistry, a smart contract that
+  acts as a proxy to the token's freeze function and will only accept a freeze
+  if it verifies the existence of a valid court order on the blockchain. Instead
+  of relying upon the caller (the administrator), CourtKeyRegistry rebuilds the
+  ordered digital signature and executes 12 checks before allowing a freeze and
+  13 checks before releasing. The CourtKeyRegistry is the only entity allowed
+  to freeze the token. Once an acceptable order is received, CourtKeyRegistry
+  creates a permanent, publicly accessible record that includes information
+  about who signed the order and what checks were performed during verification.
+  We have developed a functional prototype of CourtKeyRegistry called
+  NyayaChain. We have tested NyayaChain using a Hyperledger Besu blockchain
+  network with four validators running under QBFT consensus. During testing we
+  successfully ran all 43 cases in our test suite on both a local Hardhat
+  environment and our deployed Besu environment. We also measured the average
+  time it took for 100 three-signature freeze orders to receive final
+  confirmation in our deployed Besu environment. These measurements showed that
+  the average confirmation time was 1994 milliseconds and occurred well within
+  our defined 2000ms block period.
